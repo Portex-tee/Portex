@@ -843,6 +843,7 @@ int main(int argc, char *argv[])
 
 ////todo: server aibe setup
 
+        fprintf(OUTPUT, "\n\nKey Generation Start===========\n");
         element_random(g);
         element_random(mpk.h);
         element_random(mpk.Y);
@@ -852,7 +853,7 @@ int main(int argc, char *argv[])
         }
         element_pow_zn(mpk.X, g, x);
 
-        puts("\npkg: setup finished");
+        fprintf(OUTPUT, "\npkg: setup finished");
 
 
 ////aibe: keygen1
@@ -901,7 +902,7 @@ int main(int argc, char *argv[])
         // d3 = t1
         element_set(dk1.d3, t1);
 
-        puts("\npkg: keygen2 finished");
+        fprintf(OUTPUT, "\npkg: keygen2 finished");
 
 ////aibe: keygen3
 
@@ -919,7 +920,9 @@ int main(int argc, char *argv[])
         element_mul(dk.d2, dk1.d2, tg);
         //  d3 = d3' + t0
         element_add(dk.d3, dk1.d3, t0);
+        fprintf(OUTPUT, "\nA-IBE Success Keygen3 ");
 
+//// Key verify
         //  el = e(d1, X)
         element_pairing(el, dk.d1, mpk.X);
         //  er = e(Y, g)
@@ -933,12 +936,16 @@ int main(int argc, char *argv[])
         element_mul(er, er, te);
 
         if (element_cmp(el, er)) {
-            puts("invalid key");
+            fprintf(OUTPUT, "\nDecrypt key verify failed!");
         } else {
-            puts("valid key");
+            fprintf(OUTPUT, "\nDecrypt key verify succeed!");
         }
 
-        fprintf(OUTPUT, "\nA-IBE Success Keygen3 ");
+        element_fprintf(OUTPUT, "\ndecrypt key = (d1, d2, d3)");
+        element_fprintf(OUTPUT, "\nd1: %B", dk.d1);
+        element_fprintf(OUTPUT, "\nd2: %B", dk.d2);
+        element_fprintf(OUTPUT, "\nd3: %B", dk.d3);
+        puts("");
 
 
         //test remote aes service 加密
@@ -1005,6 +1012,7 @@ int main(int argc, char *argv[])
         memcpy_s(sendbuf, BUFSIZ, p_setkeyreq, sizeof(ra_samp_request_header_t) + 16);
         SendToServer(sizeof(ra_samp_request_header_t) + 16);
         recvlen = RecvfromServer();
+
         //检查返回信息
         p_response = (ra_samp_response_header_t *)malloc(sizeof(ra_samp_response_header_t) + 32);
 

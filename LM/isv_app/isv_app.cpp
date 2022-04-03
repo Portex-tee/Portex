@@ -32,6 +32,8 @@
 // This sample is confined to the communication between a SGX client platform
 // and an ISV Application Server.
 
+#include "openssl/sha.h"
+#include "merklecpp.h"
 #include <stdio.h>
 #include <limits.h>
 #include <unistd.h>
@@ -80,6 +82,22 @@ uint8_t *msg2_samples[] = {msg2_sample1, msg2_sample2};
 uint8_t *msg3_samples[] = {msg3_sample1, msg3_sample2};
 uint8_t *attestation_msg_samples[] =
     {attestation_msg_sample1, attestation_msg_sample2};
+
+void sha256(const std::string &srcStr, std::string &encodedHexStr)
+{
+    unsigned char mdStr[33] = { 0 };
+    SHA256((const unsigned char *)srcStr.c_str(), srcStr.length(), mdStr);// 调用sha256哈希
+
+    char buf[65] = { 0 };
+    char tmp[3] = { 0 };
+    for (int i = 0; i < 32; i++)// 哈希后的十六进制串 32字节
+    {
+        sprintf(tmp, "%02x", mdStr[i]);
+        strcat(buf, tmp);
+    }
+    buf[64] = '\0'; // 后面都是0，从32字节截断
+    encodedHexStr = std::string(buf);
+}
 
 // Some utility functions to output some of the data structures passed between
 // the ISV app and the remote attestation service provider.
@@ -413,6 +431,20 @@ int myaessetkey(const ra_samp_request_header_t *p_msgdec,
 #define _T(x) x
 int main(int argc, char *argv[])
 {
+    merkle::TreeT<32, merkle::sha256_openssl> tree;
+
+    std::string srcStr = "message", encodedHexStr;
+    sha256(srcStr, encodedHexStr);
+    merkle::Hash hash(encodedHexStr);
+    std::vector<merkle::Tree::Hash> hashes;
+    hashes.push_back(hash);
+    for (auto h : hashes)
+        tree.insert(h);
+    auto root = tree.root();
+    auto path = tree.path(hashes.size() - 1);
+    assert(path->verify(root));
+    puts("verify succeed");
+
     int ret = 0;
     ra_samp_request_header_t *p_msg0_full = NULL;
     ra_samp_response_header_t *p_msg0_resp_full = NULL;
