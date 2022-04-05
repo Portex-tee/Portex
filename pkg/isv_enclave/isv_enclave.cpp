@@ -324,15 +324,11 @@ sgx_status_t verify_att_result_mac(sgx_ra_context_t context,
 //         expected value.
 
 sgx_status_t put_secret_data(
-    sgx_ra_context_t context)
+    uint8_t *secret)
 {
     sgx_status_t ret = SGX_SUCCESS;
 
-    ret = sgx_ra_get_keys(context, SGX_RA_KEY_SK, &sk_key);
-        // Once the server has the shared secret, it should be sealed to
-        // persistent storage for future use. This will prevents having to
-        // perform remote attestation until the secret goes stale. Once the
-        // enclave is created again, the secret can be unsealed.
+    memcpy(sk_key, secret, 16);
     return ret;
 }
 

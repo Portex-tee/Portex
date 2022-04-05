@@ -770,6 +770,10 @@ int sp_ra_proc_msg3_req(const sample_ra_msg3_t *p_msg3,
     return ret;
 }
 
+void get_secret(sample_ec_key_128bit_t *key) {
+    memcpy_s(key, 16, g_sp_db.sk_key, 16);
+}
+
 
 
 

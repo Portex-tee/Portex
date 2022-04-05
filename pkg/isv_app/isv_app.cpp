@@ -530,19 +530,11 @@ int main(int argc, char *argv[])
                 }
 
                 {
-                    fprintf(OUTPUT, "\nthe context is:\n");
-                    PRINT_BYTE_ARRAY(OUTPUT, &context, sizeof(context));
+                    sample_ec_key_128bit_t secret;
+                    get_secret(&secret);
                     ret = put_secret_data(enclave_id,
                                           &status,
-                                          context);
-                    if (SGX_SUCCESS != ret) {
-                        fprintf(OUTPUT, "\nError, attestation result message secret "
-                                        "using SK based AESGCM failed in [%s]. ret = "
-                                        "0x%0x. status = 0x%0x",
-                                __FUNCTION__, ret,
-                                status);
-                        goto CLEANUP;
-                    }
+                                          secret);
                 }
 
 

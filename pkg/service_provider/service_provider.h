@@ -146,6 +146,8 @@ typedef struct sample_extended_epid_group {
     sample_verify_attestation_evidence verify_attestation_evidence;
 } sample_extended_epid_group;
 
+void get_secret(sample_ec_key_128bit_t *key);
+
 #ifdef  __cplusplus
 }
 #endif

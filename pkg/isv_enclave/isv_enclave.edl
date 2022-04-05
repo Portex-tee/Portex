@@ -44,7 +44,7 @@ enclave {
                                                   size_t message_size, 
                                                   [in,size=mac_size] uint8_t* mac, 
                                                   size_t mac_size);
-        public sgx_status_t put_secret_data(sgx_ra_context_t context);
+        public sgx_status_t put_secret_data([in,size=16] uint8_t *secret);
         public sgx_status_t enclave_encrypt([in,size=secret_size] uint8_t* p_data,
                                             uint32_t secret_size,
                                             [out,size=secret_size] uint8_t* out_data,
