@@ -324,58 +324,15 @@ sgx_status_t verify_att_result_mac(sgx_ra_context_t context,
 //         expected value.
 
 sgx_status_t put_secret_data(
-    sgx_ra_context_t context,
-    uint8_t *p_secret,
-    uint32_t secret_size,
-    uint8_t *p_gcm_mac)
+    sgx_ra_context_t context)
 {
     sgx_status_t ret = SGX_SUCCESS;
 
-    do {
-        if(secret_size != 8)
-        {
-            ret = SGX_ERROR_INVALID_PARAMETER;
-            break;
-        }
-
-        ret = sgx_ra_get_keys(context, SGX_RA_KEY_SK, &sk_key);
-        if(SGX_SUCCESS != ret)
-        {
-            break;
-        }
-
-        uint8_t aes_gcm_iv[12] = {0};
-        ret = sgx_rijndael128GCM_decrypt(&sk_key,
-                                         p_secret,
-                                         secret_size,
-                                         &g_secret[0],
-                                         &aes_gcm_iv[0],
-                                         12,
-                                         NULL,
-                                         0,
-                                         (const sgx_aes_gcm_128bit_tag_t *)
-                                            (p_gcm_mac));
-
-        uint32_t i;
-        bool secret_match = true;
-        for(i=0;i<secret_size;i++)
-        {
-            if(g_secret[i] != i)
-            {
-                secret_match = false;
-            }
-        }
-
-        if(!secret_match)
-        {
-            ret = SGX_ERROR_UNEXPECTED;
-        }
-
+    ret = sgx_ra_get_keys(context, SGX_RA_KEY_SK, &sk_key);
         // Once the server has the shared secret, it should be sealed to
         // persistent storage for future use. This will prevents having to
         // perform remote attestation until the secret goes stale. Once the
         // enclave is created again, the secret can be unsealed.
-    } while(0);
     return ret;
 }
 

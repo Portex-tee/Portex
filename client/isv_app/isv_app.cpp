@@ -191,7 +191,11 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+    puts("ra_encrypt start===");
     ra_encrypt(enclave_id, OUTPUT);
+
+    puts("ra_decrypt start===");
+    ra_decrypt(enclave_id, OUTPUT);
 
 ////todo: server aibe setup
 

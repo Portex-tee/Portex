@@ -73,7 +73,7 @@
 
 #define ENCLAVE_PATH "isv_enclave.signed.so"
 
-#define LENOFMSE 16
+#define LENOFMSE 64
 
 uint8_t *msg1_samples[] = {msg1_sample1, msg1_sample2};
 uint8_t *msg2_samples[] = {msg2_sample1, msg2_sample2};
@@ -179,52 +179,42 @@ int myaesencrypt(const ra_samp_request_header_t *p_msgenc,
                  sgx_status_t *status,
                  sgx_ra_context_t context)
 {
-    if (!p_msgenc||
-        (msg_size != LENOFMSE))
+    if (!p_msgenc || msg_size > LENOFMSE)
     {
         return -1;
     }
     int ret = 0;
 
+    int data_size = msg_size;
     int busy_retry_time = 4;
     uint8_t p_data[LENOFMSE] = {0};
     uint8_t out_data[LENOFMSE] = {0};
-    uint8_t testdata[LENOFMSE] = {0};
     ra_samp_response_header_t *p_msg2_full = NULL;
-    uint8_t msg2_size = 16; //只处理16字节的数据
+    uint8_t msg2_size = data_size + SGX_CMAC_MAC_SIZE;
 
     sgx_aes_gcm_128bit_tag_t mac;
 
-    memcpy_s(p_data, LENOFMSE, p_msgenc, msg_size);
+    memcpy_s(p_data, data_size, p_msgenc, data_size);
     do
     {
         ret = enclave_encrypt(
-            id,
-            status,
-            p_data,
-            LENOFMSE,
-            out_data,
-            mac);
-        fprintf(stdout, "\nD %d %d",id, *status);
-        ret = enclave_encrypt(
-            id,
-            status,
-            out_data,
-            LENOFMSE,
-            testdata,
-            mac);
-        fprintf(stdout, "\nD %d %d",id, *status);
-
+                id,
+                status,
+                p_data,
+                data_size,
+                out_data,
+                mac);
+        fprintf(stdout, "\nE %d %d",id, *status);
     } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
     fprintf(stdout, "\nData of Encrypt is\n");
-    PRINT_BYTE_ARRAY(stdout, p_data, 16);
-    fprintf(stdout, "\nData of Encrypted is\n");
-    PRINT_BYTE_ARRAY(stdout, out_data, 16);
-    PRINT_BYTE_ARRAY(stdout, testdata, 16);
+    PRINT_BYTE_ARRAY(stdout, p_data, data_size);
+    fprintf(stdout, "\nData of Encrypted and mac is\n");
+    PRINT_BYTE_ARRAY(stdout, out_data, data_size);
+    PRINT_BYTE_ARRAY(stdout, mac, SGX_CMAC_MAC_SIZE);
     p_msg2_full = (ra_samp_response_header_t *)malloc(msg2_size + sizeof(ra_samp_response_header_t));
     if (!p_msg2_full)
     {
-        fprintf(stderr, "\nError, out of memory in [%s].", __FUNCTION__);
+        fprintf(stderr, "\nError, out of memory in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
@@ -234,9 +224,15 @@ int myaesencrypt(const ra_samp_request_header_t *p_msgenc,
     p_msg2_full->status[0] = 0;
     p_msg2_full->status[1] = 0;
 
-    if (memcpy_s(&p_msg2_full->body[0], msg2_size, &out_data[0], msg2_size))
+    if (memcpy_s(p_msg2_full->body, data_size, out_data, data_size))
     {
-        fprintf(stderr, "\nError, memcpy failed in [%s].", __FUNCTION__);
+        fprintf(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
+        ret = SP_INTERNAL_ERROR;
+        return ret;
+    }
+    if (memcpy_s(p_msg2_full->body + data_size, SGX_CMAC_MAC_SIZE, mac, SGX_CMAC_MAC_SIZE))
+    {
+        fprintf(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
@@ -246,14 +242,14 @@ int myaesencrypt(const ra_samp_request_header_t *p_msgenc,
                  p_msg2_full,
                  msg2_size + sizeof(ra_samp_response_header_t)))
     {
-        fprintf(stderr, "\nError, memcpy failed in [%s].", __FUNCTION__);
+        fprintf(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
 
     if (SendToClient(msg2_size + sizeof(ra_samp_response_header_t)) < 0)
     {
-        fprintf(stderr, "\nError, send encrypted data failed in [%s].", __FUNCTION__);
+        fprintf(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
@@ -262,7 +258,6 @@ int myaesencrypt(const ra_samp_request_header_t *p_msgenc,
     return ret;
 }
 
-//原本设计为32字节的消息长度，前16个字节是token，但是由于时间关系直接解密了
 int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
                  uint32_t msg_size,
                  sgx_enclave_id_t id,
@@ -270,7 +265,7 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
                  sgx_ra_context_t context)
 {
     if (!p_msgenc ||
-        (msg_size != LENOFMSE))
+        (msg_size > LENOFMSE))
     {
         return -1;
     }
@@ -281,28 +276,35 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
     uint8_t p_data[LENOFMSE] = {0};
     uint8_t out_data[LENOFMSE] = {0};
     ra_samp_response_header_t *p_msg2_full = NULL;
-    uint8_t msg2_size = 16; //只处理16字节的数据
-    memcpy_s(p_data, LENOFMSE, p_msgenc, msg_size);
+    uint8_t data_size = msg_size - SGX_CMAC_MAC_SIZE;
+    uint8_t msg2_size = data_size; //只处理16字节的数据
+
+    printf("====%d %d", data_size, msg_size);
+
+    memcpy_s(p_data, data_size, p_msgenc, data_size);
+    memcpy_s(mac, SGX_CMAC_MAC_SIZE, p_msgenc + data_size, SGX_CMAC_MAC_SIZE);
     do
     {
         ret = enclave_decrypt(
             id,
             status,
             p_data,
-            LENOFMSE,
+            data_size,
             out_data,
             mac);
     } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
     if(ret != SGX_SUCCESS)
         return ret;
-    fprintf(stdout, "\nData of Decrypt is\n");
-    PRINT_BYTE_ARRAY(stdout, p_data, 16);
+    fprintf(stdout, "\nData of Decrypt and mac is\n");
+    PRINT_BYTE_ARRAY(stdout, p_data, data_size);
+    PRINT_BYTE_ARRAY(stdout, mac, SGX_CMAC_MAC_SIZE);
     fprintf(stdout, "\nData of Decrypted is\n");
-    PRINT_BYTE_ARRAY(stdout, out_data, 16);
+    PRINT_BYTE_ARRAY(stdout, out_data, data_size);
+
     p_msg2_full = (ra_samp_response_header_t *)malloc(msg2_size + sizeof(ra_samp_response_header_t));
     if (!p_msg2_full)
     {
-        fprintf(stderr, "\nError, out of memory in [%s].", __FUNCTION__);
+        fprintf(stderr, "\nError, out of memory in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
@@ -316,7 +318,7 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
 
     if (memcpy_s(&p_msg2_full->body[0], msg2_size, &out_data[0], msg2_size))
     {
-        fprintf(stderr, "\nError, memcpy failed in [%s].", __FUNCTION__);
+        fprintf(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
@@ -326,14 +328,14 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
                  p_msg2_full,
                  msg2_size + sizeof(ra_samp_response_header_t)))
     {
-        fprintf(stderr, "\nError, memcpy failed in [%s].", __FUNCTION__);
+        fprintf(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
 
     if (SendToClient(msg2_size + sizeof(ra_samp_response_header_t)) < 0)
     {
-        fprintf(stderr, "\nError, send encrypted data failed in [%s].", __FUNCTION__);
+        fprintf(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
@@ -448,7 +450,6 @@ int main(int argc, char *argv[])
                 ret = -1;
                 goto CLEANUP;
             }
-            //todo：添加一个检查p_req的函数，由于时间紧张，就先放一放
             fprintf(OUTPUT, "\nrequest type is %d",p_req->type);
             switch (p_req->type)
             {
@@ -527,6 +528,24 @@ int main(int argc, char *argv[])
                     int buflen = SendToClient(sizeof(ra_samp_response_header_t) + p_resp_msg->size);
                     fprintf(OUTPUT, "\nSend attestation data Done,send length = %d", buflen);
                 }
+
+                {
+                    fprintf(OUTPUT, "\nthe context is:\n");
+                    PRINT_BYTE_ARRAY(OUTPUT, &context, sizeof(context));
+                    ret = put_secret_data(enclave_id,
+                                          &status,
+                                          context);
+                    if (SGX_SUCCESS != ret) {
+                        fprintf(OUTPUT, "\nError, attestation result message secret "
+                                        "using SK based AESGCM failed in [%s]. ret = "
+                                        "0x%0x. status = 0x%0x",
+                                __FUNCTION__, ret,
+                                status);
+                        goto CLEANUP;
+                    }
+                }
+
+
                 SAFE_FREE(p_req);
                 SAFE_FREE(p_resp_msg);
                 break;
