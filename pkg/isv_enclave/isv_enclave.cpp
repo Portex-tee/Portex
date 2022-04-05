@@ -68,8 +68,6 @@ static const sgx_ec256_public_t g_sp_pub_key = {
 uint8_t g_secret[8] = {0};
 sgx_ec_key_128bit_t sk_key;
 //lhadd
-sgx_ec_key_128bit_t aes_key;
-sgx_ec_key_128bit_t aes2_key;
 
 #ifdef SUPPLIED_KEY_DERIVATION
 
@@ -399,15 +397,15 @@ sgx_status_t put_secret_data(
 //         expected value.
 
 sgx_status_t enclave_encrypt(
-    uint8_t *p_data,
-    uint32_t secret_size,
-    uint8_t *out_data)
+        uint8_t *p_data,
+        uint32_t secret_size,
+        uint8_t *out_data,
+        uint8_t *out_mac)
 {
     sgx_status_t ret = SGX_SUCCESS;
-    sgx_aes_gcm_128bit_tag_t c_gcm_mac;
     do {
         uint8_t aes_gcm_iv[12] = {0};
-        ret = sgx_rijndael128GCM_encrypt(&aes_key,
+        ret = sgx_rijndael128GCM_encrypt(&sk_key,
                                          p_data,
                                          secret_size,
                                          out_data,
@@ -415,7 +413,7 @@ sgx_status_t enclave_encrypt(
                                          12,
                                          NULL,
                                          0,
-                                         &c_gcm_mac);
+                                         (sgx_aes_gcm_128bit_tag_t *) out_mac);
         if(SGX_SUCCESS != ret)
         {
             break;
@@ -425,16 +423,15 @@ sgx_status_t enclave_encrypt(
 }
 
 sgx_status_t enclave_decrypt(
-    uint8_t *p_data,
-    uint32_t secret_size,
-    uint8_t *out_data)
+        uint8_t *p_data,
+        uint32_t secret_size,
+        uint8_t *out_data,
+        uint8_t *in_mac)
 {
     sgx_status_t ret = SGX_SUCCESS;
-    sgx_aes_gcm_128bit_tag_t c_gcm_mac;
-    memcpy(out_data, &aes2_key,16);
+    uint8_t aes_gcm_iv[12] = {0};
     do {
-        uint8_t aes_gcm_iv[12] = {0};
-        ret = sgx_rijndael128GCM_decrypt(&aes2_key,
+        ret = sgx_rijndael128GCM_decrypt(&sk_key,
                                          p_data,
                                          secret_size,
                                          out_data,
@@ -442,10 +439,9 @@ sgx_status_t enclave_decrypt(
                                          12,
                                          NULL,
                                          0,
-                                         (const sgx_aes_gcm_128bit_tag_t *)&c_gcm_mac);
+                                         (const sgx_aes_gcm_128bit_tag_t *) in_mac);
         if(SGX_SUCCESS != ret)
         {
-            
             break;
         }
     } while(0);

@@ -50,10 +50,12 @@ enclave {
                                             [in,count=16] uint8_t* gcm_mac);
         public sgx_status_t enclave_encrypt([in,size=secret_size] uint8_t* p_data,
                                             uint32_t secret_size,
-                                            [out,size=secret_size] uint8_t* out_data);
+                                            [out,size=secret_size] uint8_t* out_data,
+                                            [out,size=16] uint8_t* out_mac);
         public sgx_status_t enclave_decrypt([in,size=secret_size] uint8_t* p_data,
                                             uint32_t secret_size,
-                                            [out,size=secret_size] uint8_t* out_data);                           
+                                            [out,size=secret_size] uint8_t* out_data,
+                                            [in,size=16] uint8_t* in_mac);
     };
 
 };

@@ -193,6 +193,8 @@ int myaesencrypt(const ra_samp_request_header_t *p_msgenc,
     ra_samp_response_header_t *p_msg2_full = NULL;
     uint8_t msg2_size = 16; //只处理16字节的数据
 
+    sgx_aes_gcm_128bit_tag_t mac;
+
     memcpy_s(p_data, LENOFMSE, p_msgenc, msg_size);
     do
     {
@@ -201,14 +203,16 @@ int myaesencrypt(const ra_samp_request_header_t *p_msgenc,
             status,
             p_data,
             LENOFMSE,
-            out_data);
+            out_data,
+            mac);
         fprintf(stdout, "\nD %d %d",id, *status);
         ret = enclave_encrypt(
             id,
             status,
             out_data,
             LENOFMSE,
-            testdata);
+            testdata,
+            mac);
         fprintf(stdout, "\nD %d %d",id, *status);
 
     } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
@@ -270,6 +274,7 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
     {
         return -1;
     }
+    sgx_aes_gcm_128bit_tag_t mac;
     int ret = 0;
     fprintf(stdout, "\nD %d %d",id, *status);
     int busy_retry_time = 4;
@@ -285,7 +290,8 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
             status,
             p_data,
             LENOFMSE,
-            out_data);
+            out_data,
+            mac);
     } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
     if(ret != SGX_SUCCESS)
         return ret;
@@ -599,6 +605,8 @@ CLEANUP:
     ra_free_network_response_buffer(p_msg0_resp_full);
     ra_free_network_response_buffer(p_msg2_full);
     ra_free_network_response_buffer(p_att_result_msg_full);
+
+    Cleanupsocket();
 
     // p_msg3 is malloc'd by the untrusted KE library. App needs to free.
     SAFE_FREE(p_msg3);
