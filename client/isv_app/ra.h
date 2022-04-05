@@ -306,7 +306,6 @@ int ra_decrypt(sgx_enclave_id_t enclave_id, FILE *OUTPUT){
     uint8_t encrypt_data[16] = {0};
     uint8_t decrypt_data[16] = {0};
     sgx_aes_gcm_128bit_tag_t encrypt_mac;
-    sgx_aes_gcm_128bit_tag_t decrypt_mac;
 
     data_size = sizeof(test_data);
     msg_size = data_size + SGX_CMAC_MAC_SIZE;
@@ -353,7 +352,7 @@ int ra_decrypt(sgx_enclave_id_t enclave_id, FILE *OUTPUT){
     PRINT_BYTE_ARRAY(OUTPUT, p_request->body + data_size, SGX_CMAC_MAC_SIZE);
 
     memset(sendbuf, 0, BUFSIZ);
-    memcpy_s(sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + msg_size);
+    memcpy_s(sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + p_request->size);
     SendToServer(sizeof(ra_samp_request_header_t) + p_request->size);
     recvlen = RecvfromServer();
     //检查返回信息

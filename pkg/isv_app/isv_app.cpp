@@ -73,7 +73,7 @@
 
 #define ENCLAVE_PATH "isv_enclave.signed.so"
 
-#define LENOFMSE 64
+#define LENOFMSE 128
 
 uint8_t *msg1_samples[] = {msg1_sample1, msg1_sample2};
 uint8_t *msg2_samples[] = {msg2_sample1, msg2_sample2};
@@ -277,12 +277,13 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
     uint8_t out_data[LENOFMSE] = {0};
     ra_samp_response_header_t *p_msg2_full = NULL;
     uint8_t data_size = msg_size - SGX_CMAC_MAC_SIZE;
-    uint8_t msg2_size = data_size; //只处理16字节的数据
+    uint8_t msg2_size = data_size;
 
-    printf("====%d %d", data_size, msg_size);
+    printf("====%d %d\n", data_size, msg_size);
+    PRINT_BYTE_ARRAY(stdout, (uint8_t *) p_msgenc, msg_size);
 
-    memcpy_s(p_data, data_size, p_msgenc, data_size);
-    memcpy_s(mac, SGX_CMAC_MAC_SIZE, p_msgenc + data_size, SGX_CMAC_MAC_SIZE);
+    memcpy_s(p_data, msg_size, p_msgenc, msg_size);
+    memcpy_s(mac, SGX_CMAC_MAC_SIZE, p_data + data_size, SGX_CMAC_MAC_SIZE);
     do
     {
         ret = enclave_decrypt(
