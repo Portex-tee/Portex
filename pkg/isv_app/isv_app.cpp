@@ -336,76 +336,6 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
     return ret;
 }
 
-int myaessetkey(const ra_samp_request_header_t *p_msgdec,
-                uint32_t msg_size,
-                sgx_enclave_id_t id,
-                sgx_status_t *status,
-                sgx_ra_context_t context)
-{
-    if (!p_msgdec  ||
-        (msg_size != LENOFMSE * 2))
-    {
-        return -1;
-    }
-    int ret = 0;
-    int busy_retry_time = 4;
-    uint8_t p_data[LENOFMSE * 2] = {0};
-    uint8_t out_data[LENOFMSE] = {'K','E','Y','S','E','T','S','U','C','C','E','S'};
-    ra_samp_response_header_t *p_msg2_full = NULL;
-    uint8_t msg2_size = 16; //只处理16字节的数据
-    memcpy_s(p_data, msg_size, p_msgdec, msg_size);
-    //应该调用isv_enclave_u.h中生成的函数
-    do
-    {
-        ret = enclave_generate_key(
-            id,
-            status,
-            p_data,
-            msg_size);
-    } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
-    if(ret != SGX_SUCCESS)
-        return ret;
-    p_msg2_full = (ra_samp_response_header_t *)malloc(msg2_size + sizeof(ra_samp_response_header_t));
-    if (!p_msg2_full)
-    {
-        fprintf(stderr, "\nError, out of memory in [%s].", __FUNCTION__);
-        ret = SP_INTERNAL_ERROR;
-        return ret;
-    }
-    memset(p_msg2_full, 0, msg2_size + sizeof(ra_samp_response_header_t));
-    p_msg2_full->type = TYPE_RA_MSGSETKEY;
-    p_msg2_full->size = msg2_size;
-    // The simulated message2 always passes.  This would need to be set
-    // accordingly in a real service provider implementation.
-    p_msg2_full->status[0] = 0;
-    p_msg2_full->status[1] = 0;
-
-    if (memcpy_s(&p_msg2_full->body[0], msg2_size, &out_data[0], msg2_size))
-    {
-        fprintf(stderr, "\nError, memcpy failed in [%s].", __FUNCTION__);
-        ret = SP_INTERNAL_ERROR;
-        return ret;
-    }
-    memset(sendbuf, 0, BUFSIZ);
-    if (memcpy_s(sendbuf,
-                 msg2_size + sizeof(ra_samp_response_header_t),
-                 p_msg2_full,
-                 msg2_size + sizeof(ra_samp_response_header_t)))
-    {
-        fprintf(stderr, "\nError, memcpy failed in [%s].", __FUNCTION__);
-        ret = SP_INTERNAL_ERROR;
-        return ret;
-    }
-
-    if (SendToClient(msg2_size + sizeof(ra_samp_response_header_t)) < 0)
-    {
-        fprintf(stderr, "\nError, send encrypted data failed in [%s].", __FUNCTION__);
-        ret = SP_INTERNAL_ERROR;
-        return ret;
-    }
-    SAFE_FREE(p_msg2_full);
-    return ret;
-}
 // This sample code doesn't have any recovery/retry mechanisms for the remote
 // attestation. Since the enclave can be lost due S3 transitions, apps
 // susceptible to S3 transitions should have logic to restart attestation in
@@ -624,23 +554,6 @@ int main(int argc, char *argv[])
                                    &status,
                                    context);
                 fprintf(OUTPUT, "\nEncrypt Done %d %d",enclave_id, status);
-                if (0 != ret)
-                {
-                    fprintf(stderr, "\nError, call encrypt fail [%s].",
-                            __FUNCTION__);
-                }
-                SAFE_FREE(p_req);
-                break;
-
-            case TYPE_RA_MSGSETKEY:
-                //本来的逻辑是验证数据是不是enclave传过来的，token
-                fprintf(OUTPUT, "\nSet Key");
-                ret = myaessetkey((const ra_samp_request_header_t *)((uint8_t *)p_req +
-                                                             sizeof(ra_samp_request_header_t)),
-                                  p_req->size,
-                                  enclave_id,
-                                  &status,
-                                  context);
                 if (0 != ret)
                 {
                     fprintf(stderr, "\nError, call encrypt fail [%s].",

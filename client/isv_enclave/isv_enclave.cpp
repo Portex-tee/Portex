@@ -379,38 +379,57 @@ sgx_status_t put_secret_data(
     return ret;
 }
 
-sgx_status_t generate_server_key(
-    uint8_t *token_with_key,
-    uint32_t secret_size)
+
+sgx_status_t enclave_encrypt(
+        uint8_t *p_data,
+        uint32_t secret_size,
+        uint8_t *out_data)
 {
     sgx_status_t ret = SGX_SUCCESS;
-    if(secret_size != 32)//加密数据
-    {
-        ret = SGX_ERROR_UNEXPECTED;
-        return ret;
-    }
-    uint8_t token[32] = {0};
-    ret = sgx_read_rand(token, 32);//随机生成秘钥
-    uint8_t aes_gcm_iv[12] = {0};
     sgx_aes_gcm_128bit_tag_t c_gcm_mac;
-    //token用于server识别这个enclave已经有了sk_key,原理就是用client key加密以后server解密还是5到12
-    
     do {
-        
+        uint8_t aes_gcm_iv[12] = {0};
         ret = sgx_rijndael128GCM_encrypt(&sk_key,
-                                         &token[0],
+                                         p_data,
                                          secret_size,
-                                         token_with_key,
+                                         out_data,
                                          &aes_gcm_iv[0],
                                          12,
                                          NULL,
                                          0,
                                          &c_gcm_mac);
+        if(SGX_SUCCESS != ret)
+        {
+            break;
+        }
     } while(0);
-
-    for(int i=0;i<16;i++)
-    {
-        token[i] = i+5;
-    }
     return ret;
-}  
+}
+
+sgx_status_t enclave_decrypt(
+        uint8_t *p_data,
+        uint32_t secret_size,
+        uint8_t *out_data)
+{
+    sgx_status_t ret = SGX_SUCCESS;
+    sgx_aes_gcm_128bit_tag_t c_gcm_mac;
+    memcpy(out_data, &sk_key,16);
+    do {
+        uint8_t aes_gcm_iv[12] = {0};
+        ret = sgx_rijndael128GCM_decrypt(&sk_key,
+                                         p_data,
+                                         secret_size,
+                                         out_data,
+                                         &aes_gcm_iv[0],
+                                         12,
+                                         NULL,
+                                         0,
+                                         (const sgx_aes_gcm_128bit_tag_t *)&c_gcm_mac);
+        if(SGX_SUCCESS != ret)
+        {
+
+            break;
+        }
+    } while(0);
+    return ret;
+}

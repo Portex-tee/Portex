@@ -398,53 +398,6 @@ sgx_status_t put_secret_data(
 // @return SGX_ERROR_UNEXPECTED - the secret doesn't match the
 //         expected value.
 
-sgx_status_t enclave_generate_key(
-    uint8_t *p_data,
-    uint32_t secret_size)
-{
-    sgx_status_t ret = SGX_SUCCESS;
-
-    if(secret_size != 32)
-    return SGX_ERROR_INVALID_METADATA;
-
-    uint8_t aes_gcm_iv[12] = {0};
-    uint8_t out_data[32] = {0};
-    int i = 0;
-    sgx_aes_gcm_128bit_tag_t c_gcm_mac;
-    do {
-        //首先验证16个字节是不是token
-        ret = sgx_rijndael128GCM_decrypt(&sk_key,
-                                         p_data,
-                                         32,
-                                         &out_data[0],
-                                         &aes_gcm_iv[0],
-                                         12,
-                                         NULL,
-                                         0,
-                                         &c_gcm_mac);
-        if(SGX_SUCCESS != ret)
-        {
-            break;
-        }
-    } while(0);
-    //token这个硬编码成5到20
-    bool secret_match = true;
-    for(i=0;i<16;i++)
-    {
-        if(out_data[i] != i+5)
-        {
-            secret_match = false;
-        }
-    }
-    if(secret_match == true)
-    {//设定后16字节为key
-        memcpy((void* )&aes_key, &out_data[16], 16);
-        memcpy((void* )&aes2_key, &out_data[16], 16);
-    }
-
-    return ret;
-}
-
 sgx_status_t enclave_encrypt(
     uint8_t *p_data,
     uint32_t secret_size,
