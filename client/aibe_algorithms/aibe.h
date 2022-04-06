@@ -34,5 +34,55 @@ void dk_clear(dk_t *dk);
 
 int get_bit(int id, int n);
 
+class AibeAlgo {
+public:
+    // param elements
+    element_t x;
+    element_t g;
+    mpk_t mpk;
+
+    // user elements
+    element_t Hz;
+    element_t t0;
+    element_t theta;
+    element_t R;
+    element_t r;
+    element_t r2; // r''
+    element_t el;
+    element_t er;
+
+    // pkg elements
+    element_t r1; // r'
+    element_t t1;
+    dk_t dk; // d_ID
+    dk_t dk1; // d'_ID
+
+    // temp elements
+    element_t tz;
+    element_t tg;
+    element_t te;
+
+    pairing_t pairing;
+
+    AibeAlgo(){};
+
+    int run(FILE *OUTPUT);
+
+    int load_param(const char *fn);
+
+    void server_setup();
+
+    void init();
+
+    void keygen1(int id);
+
+    void keygen2();
+
+    int keygen3();
+
+    void clear();
+
+};
+
 
 #endif //PBC_TEST_AIBE_H
