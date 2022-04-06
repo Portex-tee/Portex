@@ -81,7 +81,7 @@ else
 endif
 
 App_Cpp_Files := isv_app/isv_app.cpp
-App_Include_Paths := -Iservice_provider -I$(SGX_SDK)/include -I$(IPP_LIBRARY)/include -Iaibe_algorithms
+App_Include_Paths := -Iservice_provider -I$(SGX_SDK)/include -I$(IPP_LIBRARY)/include
 
 App_C_Flags := $(SGX_COMMON_CFLAGS) -fPIC -Wno-attributes $(App_Include_Paths)
 
@@ -98,7 +98,7 @@ else
 endif
 
 App_Cpp_Flags := $(App_C_Flags) -std=c++11
-App_Link_Flags := $(SGX_COMMON_CFLAGS) -L$(IPP_LIBRARY_PATH) -L$(SGX_LIBRARY_PATH) -l$(Urts_Library_Name) -L. -lsgx_ukey_exchange -lpthread -lservice_provider -laibe_algorithms -lgmp -lpbc -Wl,-rpath=$(CURDIR)/sample_libcrypto -Wl,-rpath=$(CURDIR)
+App_Link_Flags := $(SGX_COMMON_CFLAGS) -L$(IPP_LIBRARY_PATH) -L$(SGX_LIBRARY_PATH) -l$(Urts_Library_Name) -L. -lsgx_ukey_exchange -lpthread -lservice_provider -lgmp -lpbc -Wl,-rpath=$(CURDIR)/sample_libcrypto -Wl,-rpath=$(CURDIR)
 
 ifneq ($(SGX_MODE), HW)
 	App_Link_Flags += -lsgx_uae_service_sim
@@ -121,17 +121,6 @@ ServiceProvider_Link_Flags :=  -shared $(SGX_COMMON_CFLAGS) -L$(SGX_LIBRARY_PATH
 
 ServiceProvider_Cpp_Objects := $(ServiceProvider_Cpp_Files:.cpp=.o)
 
-
-######## Service Provider Settings ########
-PBC_PATH := /usr/local/include
-AibeAlgo_Cpp_Files := aibe_algorithms/aibe.cpp
-AibeAlgo_Include_Paths := -I$(SGX_SDK)/include -I$(SGX_SDK)/include/tlibc -I$(SGX_SDK)/include/libcxx -Isample_libcrypto -I$(PBC_PATH)
-
-AibeAlgo_C_Flags := $(SGX_COMMON_CFLAGS) -fPIC -Wno-attributes -I$(SGX_SDK)/include -Isample_libcrypto
-AibeAlgo_Cpp_Flags := $(AibeAlgo_C_Flags) -std=c++11
-AibeAlgo_Link_Flags :=  -shared $(SGX_COMMON_CFLAGS) -L$(SGX_LIBRARY_PATH) -lsample_libcrypto -Lsample_libcrypto -Lcrypto -L. -lgmp -lpbc
-
-AibeAlgo_Cpp_Objects := $(AibeAlgo_Cpp_Files:.cpp=.o)
 
 ######## Enclave Settings ########
 
@@ -199,7 +188,7 @@ endif
 .PHONY: all run
 
 ifeq ($(Build_Mode), HW_RELEASE)
-all: .config_$(Build_Mode)_$(SGX_ARCH) libservice_provider.so libaibe_algorithms.so $(App_Name) $(Enclave_Name)
+all: .config_$(Build_Mode)_$(SGX_ARCH) libservice_provider.so $(App_Name) $(Enclave_Name)
 	@echo "The project has been built in release hardware mode."
 	@echo "Please sign the $(Enclave_Name) first with your signing key before you run the $(App_Name) to launch and access the enclave."
 	@echo "To sign the enclave use the command:"
@@ -207,7 +196,7 @@ all: .config_$(Build_Mode)_$(SGX_ARCH) libservice_provider.so libaibe_algorithms
 	@echo "You can also sign the enclave using an external signing tool."
 	@echo "To build the project in simulation mode set SGX_MODE=SIM. To build the project in prerelease mode set SGX_PRERELEASE=1 and SGX_MODE=HW."
 else
-all: .config_$(Build_Mode)_$(SGX_ARCH) libservice_provider.so libaibe_algorithms.so $(App_Name) $(Signed_Enclave_Name)
+all: .config_$(Build_Mode)_$(SGX_ARCH) libservice_provider.so $(App_Name) $(Signed_Enclave_Name)
 ifeq ($(Build_Mode), HW_DEBUG)
 	@echo "The project has been built in debug hardware mode."
 else ifeq ($(Build_Mode), SIM_DEBUG)
@@ -228,7 +217,7 @@ ifneq ($(Build_Mode), HW_RELEASE)
 endif
 
 .config_$(Build_Mode)_$(SGX_ARCH):
-	@rm -f .config_* $(App_Name) $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) isv_app/isv_enclave_u.* $(Enclave_Cpp_Objects) isv_enclave/isv_enclave_t.* libservice_provider.* $(ServiceProvider_Cpp_Objects) libaibe_algorithms.* $(AibeAlgo_Cpp_Objects)
+	@rm -f .config_* $(App_Name) $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) isv_app/isv_enclave_u.* $(Enclave_Cpp_Objects) isv_enclave/isv_enclave_t.* libservice_provider.* $(ServiceProvider_Cpp_Objects)
 	@touch .config_$(Build_Mode)_$(SGX_ARCH)
 
 
@@ -261,18 +250,6 @@ libservice_provider.so: $(ServiceProvider_Cpp_Objects)
 	@$(CXX) $^ -o $@ $(ServiceProvider_Link_Flags)
 	@echo "LINK =>  $@"
 
-
-######## A-IBE algorithms Objects ########
-
-
-aibe_algorithms/%.o: aibe_algorithms/%.cpp
-	@$(CXX) $(AibeAlgo_Cpp_Flags) -c $< -o $@
-	@echo "CXX  <=  $<"
-
-libaibe_algorithms.so: $(AibeAlgo_Cpp_Objects)
-	@$(CXX) $^ -o $@ $(AibeAlgo_Link_Flags)
-	@echo "LINK =>  $@"
-
 ######## Enclave Objects ########
 
 isv_enclave/isv_enclave_t.c: $(SGX_EDGER8R) isv_enclave/isv_enclave.edl
@@ -298,4 +275,4 @@ $(Signed_Enclave_Name): $(Enclave_Name)
 .PHONY: clean
 
 clean:
-	@rm -f .config_* $(App_Name) $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) isv_app/isv_enclave_u.* $(Enclave_Cpp_Objects) isv_enclave/isv_enclave_t.* libservice_provider.* $(ServiceProvider_Cpp_Objects) libaibe_algorithms.* $(AibeAlgo_Cpp_Objects)
+	@rm -f .config_* $(App_Name) $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) isv_app/isv_enclave_u.* $(Enclave_Cpp_Objects) isv_enclave/isv_enclave_t.* libservice_provider.* $(ServiceProvider_Cpp_Objects)

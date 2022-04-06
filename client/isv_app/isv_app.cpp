@@ -93,7 +93,12 @@ int main(int argc, char *argv[])
     int ret = 0;
     sgx_enclave_id_t enclave_id = 0;
     AibeAlgo aibeAlgo;
+    sgx_aes_gcm_128bit_tag_t mac;
 
+    int data_len;
+    uint8_t data[256] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+    uint8_t encrypt_data[256];
+    uint8_t decrypt_data[256];
     FILE *OUTPUT = stdout;
 
 
@@ -141,18 +146,71 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+
+//    aibeAlgo.run(OUTPUT);
+
+    //aibe load_param
+
+    if (aibeAlgo.load_param(file_path)) {
+        ret = -1;
+        fprintf(stderr, "\nParam File Path error");
+        goto CLEANUP;
+    }
+
+    fprintf(OUTPUT, "\nA-IBE Success Set Up");
+
+////    element init
+    aibeAlgo.init();
+
+////    todo: server aibe load_param
+    aibeAlgo.server_setup();
+
+    puts("\nPKG: setup finished");
+
+////    aibe: keygen1
+
+    aibeAlgo.keygen1(ID);
+// todo: finish the transport
+    data_len = element_length_in_bytes(aibeAlgo.R);
+    printf("R in length: %d\n", data_len);
+    element_printf("R: \n%B\n", aibeAlgo.R);
+
+    element_to_bytes(data, aibeAlgo.R);
+
     puts("ra_encrypt start===");
-    ra_encrypt(enclave_id, OUTPUT);
+    ra_encrypt(data, data_len, encrypt_data, mac, enclave_id, OUTPUT);
+    PRINT_BYTE_ARRAY(OUTPUT, encrypt_data, data_len);
 
     puts("ra_decrypt start===");
-    ra_decrypt(enclave_id, OUTPUT);
+    ra_decrypt(encrypt_data, data_len, decrypt_data, mac, enclave_id, OUTPUT);
+    PRINT_BYTE_ARRAY(OUTPUT, decrypt_data, data_len);
 
-    aibeAlgo.run(OUTPUT);
+    element_from_bytes(aibeAlgo.R, decrypt_data);
+    data_len = element_length_in_bytes(aibeAlgo.R);
+    puts("After encrypt and decrypt:");
+    printf("R in length: %d\n", data_len);
+    element_printf("R: \n%B\n", aibeAlgo.R);
+
+    fprintf(OUTPUT, "\nA-IBE Success Keygen1 ");
+
+////    todo: server aibe keygen2
+    aibeAlgo.keygen2();
+    puts("\nPKG: keygen2 finished");
+
+////    aibe: keygen3
+    if (aibeAlgo.keygen3()) {
+        fprintf(stderr, "\nKey verify failed");
+        goto CLEANUP;
+    }
+
+    fprintf(OUTPUT, "\nA-IBE Success Keygen3 ");
+    //todo: aibe clear
 
 CLEANUP:
     Cleanupsocket();
     sgx_destroy_enclave(enclave_id);
 
+    aibeAlgo.clear();
     fprintf(OUTPUT, "\nSuccess Clean Up A-IBE ");
 
     return ret;

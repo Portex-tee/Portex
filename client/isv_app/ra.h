@@ -188,83 +188,10 @@ void PRINT_ATTESTATION_SERVICE_RESPONSE(
 #define _T(x) x
 
 
-int ra_encrypt(sgx_enclave_id_t enclave_id, FILE *OUTPUT) {
+int ra_decrypt(uint8_t *data, int data_len, uint8_t *output, uint8_t *mac, sgx_enclave_id_t enclave_id, FILE *OUTPUT) {
     int ret = 0;
     sgx_status_t status = SGX_SUCCESS;
-    ra_samp_request_header_t *p_request = NULL;
-    ra_samp_response_header_t *p_response = NULL;
-    int recvlen = 0;
     int busy_retry_time;
-    int data_size;
-    int msg_size;
-
-
-    //test remote aes service 加密
-    uint8_t test_data[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-    uint8_t encrypt_data[16] = {0};
-    uint8_t decrypt_data[16] = {0};
-    sgx_aes_gcm_128bit_tag_t encrypt_mac;
-
-//    busy_retry_time = 4;
-//    do
-//    {
-//        ret = enclave_encrypt(
-//                enclave_id,
-//                &status,
-//                test_data,
-//                sizeof(test_data),
-//                encrypt_data,
-//                encrypt_mac);
-//    } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
-//    if(ret != SGX_SUCCESS) {
-//        fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
-//                __FUNCTION__, __LINE__);
-//        goto CLEANUP;
-//    }
-//    fprintf(OUTPUT, "\nSuccess Encrypt in Local\n");
-//    PRINT_BYTE_ARRAY(OUTPUT, encrypt_data, sizeof(encrypt_data));
-//    fprintf(OUTPUT, "\nEncrypt Mac\n");
-//    PRINT_BYTE_ARRAY(OUTPUT, encrypt_mac, SGX_CMAC_MAC_SIZE);
-
-    msg_size = sizeof(test_data);
-    p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);
-    p_request->size = msg_size;
-    p_request->type = TYPE_RA_MSGENC;
-
-    if (memcpy_s(p_request->body, msg_size, test_data, msg_size)) {
-        fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
-                __FUNCTION__, __LINE__);
-        ret = -1;
-        goto CLEANUP;
-    }
-    memset(sendbuf, 0, BUFSIZ);
-    memcpy_s(sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + p_request->size);
-    SendToServer(sizeof(ra_samp_request_header_t) + p_request->size);
-    recvlen = RecvfromServer();
-    //TODO:检查返回信息
-    p_response = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) recvbuf)->size);
-    
-    if (memcpy_s(p_response, recvlen, recvbuf, recvlen)) {
-        fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
-                __FUNCTION__, __LINE__);
-        ret = -1;
-        goto CLEANUP;
-    }
-
-    data_size = p_response->size - SGX_AESGCM_MAC_SIZE;
-    if ((p_response->type != TYPE_RA_MSGENC)) {
-        fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
-                __FUNCTION__, __LINE__);
-        ret = -1;
-        goto CLEANUP;
-    } else {
-        memcpy_s(encrypt_data, data_size, p_response->body, data_size);
-        memcpy_s(encrypt_mac, SGX_CMAC_MAC_SIZE, p_response->body + data_size, SGX_CMAC_MAC_SIZE);
-        fprintf(OUTPUT, "\nSuccess Encrypt\n");
-        PRINT_BYTE_ARRAY(OUTPUT, encrypt_data, sizeof(encrypt_data));
-        fprintf(OUTPUT, "\nEncrypt Mac\n");
-        PRINT_BYTE_ARRAY(OUTPUT, encrypt_mac, SGX_CMAC_MAC_SIZE);
-    }
     
     busy_retry_time = 4;
     do
@@ -272,10 +199,10 @@ int ra_encrypt(sgx_enclave_id_t enclave_id, FILE *OUTPUT) {
         ret = enclave_decrypt(
                 enclave_id,
                 &status,
-                encrypt_data,
-                data_size,
-                decrypt_data,
-                encrypt_mac);
+                data,
+                data_len,
+                output,
+                mac);
     } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
     if(ret != SGX_SUCCESS) {
         fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
@@ -283,35 +210,13 @@ int ra_encrypt(sgx_enclave_id_t enclave_id, FILE *OUTPUT) {
         goto CLEANUP;
     }
 
-    fprintf(OUTPUT, "\nSuccess Decrypt in Local\n");
-    PRINT_BYTE_ARRAY(OUTPUT, decrypt_data, data_size);
-    // todo: server encrypt/decrypt, client decrypt
-    
-    CLEANUP:
-    SAFE_FREE(p_response);
+CLEANUP:
     return ret;
 }
 
-int ra_decrypt(sgx_enclave_id_t enclave_id, FILE *OUTPUT){
+int ra_encrypt(uint8_t *data, int data_len, uint8_t *output, uint8_t *mac, sgx_enclave_id_t enclave_id, FILE *OUTPUT){
     int ret = 0;
     sgx_status_t status = SGX_SUCCESS;
-    ra_samp_request_header_t *p_request = NULL;
-    ra_samp_response_header_t *p_response = NULL;
-    int recvlen = 0;
-    int data_size;
-    int msg_size, msg2_size;
-
-    //test remote aes service 加密
-    uint8_t test_data[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-    uint8_t encrypt_data[16] = {0};
-    uint8_t decrypt_data[16] = {0};
-    sgx_aes_gcm_128bit_tag_t encrypt_mac;
-
-    data_size = sizeof(test_data);
-    msg_size = data_size + SGX_CMAC_MAC_SIZE;
-    p_request = (ra_samp_request_header_t *)malloc(sizeof(ra_samp_request_header_t) + data_size + SGX_CMAC_MAC_SIZE);
-    p_request->type = TYPE_RA_MSGDEC;
-    p_request->size = msg_size;
 
     int busy_retry_time = 4;
     do
@@ -319,10 +224,10 @@ int ra_decrypt(sgx_enclave_id_t enclave_id, FILE *OUTPUT){
         ret = enclave_encrypt(
                 enclave_id,
                 &status,
-                test_data,
-                data_size,
-                encrypt_data,
-                encrypt_mac);
+                data,
+                data_len,
+                output,
+                mac);
     } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
     if(ret != SGX_SUCCESS) {
         fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
@@ -330,57 +235,7 @@ int ra_decrypt(sgx_enclave_id_t enclave_id, FILE *OUTPUT){
         goto CLEANUP;
     }
 
-    printf("====%d %d", data_size, msg_size);
-
-    if (memcpy_s(p_request->body, data_size, encrypt_data, data_size))
-    {
-        fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s].",
-                __FUNCTION__);
-        ret = -1;
-        goto CLEANUP;
-    }
-    if (memcpy_s(p_request->body + data_size, SGX_CMAC_MAC_SIZE, encrypt_mac, SGX_CMAC_MAC_SIZE))
-    {
-        fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s].",
-                __FUNCTION__);
-        ret = -1;
-        goto CLEANUP;
-    }
-    fprintf(OUTPUT, "\nSuccess Encrypt in Local\n");
-    PRINT_BYTE_ARRAY(OUTPUT, p_request->body, data_size);
-    fprintf(OUTPUT, "\nEncrypt Mac\n");
-    PRINT_BYTE_ARRAY(OUTPUT, p_request->body + data_size, SGX_CMAC_MAC_SIZE);
-
-    memset(sendbuf, 0, BUFSIZ);
-    memcpy_s(sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + p_request->size);
-    SendToServer(sizeof(ra_samp_request_header_t) + p_request->size);
-    recvlen = RecvfromServer();
-    //检查返回信息
-    msg2_size = ((ra_samp_response_header_t *) recvbuf)->size;
-    p_response = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t) + msg2_size);
-
-    if (memcpy_s(p_response, recvlen, recvbuf, recvlen)) {
-        fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
-                __FUNCTION__, __LINE__);
-        ret = -1;
-        goto CLEANUP;
-    }
-
-    if ((p_response->type != TYPE_RA_MSGDEC)) {
-        fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
-                __FUNCTION__, __LINE__);
-        ret = -1;
-        goto CLEANUP;
-    } else {
-        data_size = p_response->size;
-        memcpy_s(decrypt_data, data_size, p_response->body, data_size);
-        fprintf(OUTPUT, "\nSuccess Decrypt");
-        PRINT_BYTE_ARRAY(OUTPUT, encrypt_data, sizeof(encrypt_data));
-        PRINT_BYTE_ARRAY(OUTPUT, decrypt_data, sizeof(decrypt_data));
-    }
-
-    CLEANUP:
-    SAFE_FREE(p_response);
+CLEANUP:
     return ret;
 }
 

@@ -32,6 +32,7 @@
 // This sample is confined to the communication between a SGX client platform
 // and an ISV Application Server.
 
+#include "aibe.h"
 #include <stdio.h>
 #include <limits.h>
 #include <unistd.h>
@@ -190,7 +191,7 @@ int myaesencrypt(const ra_samp_request_header_t *p_msgenc,
     uint8_t p_data[LENOFMSE] = {0};
     uint8_t out_data[LENOFMSE] = {0};
     ra_samp_response_header_t *p_msg2_full = NULL;
-    uint8_t msg2_size = data_size + SGX_CMAC_MAC_SIZE;
+    uint8_t msg2_size = data_size + SGX_AESGCM_MAC_SIZE;
 
     sgx_aes_gcm_128bit_tag_t mac;
 
@@ -210,7 +211,7 @@ int myaesencrypt(const ra_samp_request_header_t *p_msgenc,
     PRINT_BYTE_ARRAY(stdout, p_data, data_size);
     fprintf(stdout, "\nData of Encrypted and mac is\n");
     PRINT_BYTE_ARRAY(stdout, out_data, data_size);
-    PRINT_BYTE_ARRAY(stdout, mac, SGX_CMAC_MAC_SIZE);
+    PRINT_BYTE_ARRAY(stdout, mac, SGX_AESGCM_MAC_SIZE);
     p_msg2_full = (ra_samp_response_header_t *)malloc(msg2_size + sizeof(ra_samp_response_header_t));
     if (!p_msg2_full)
     {
@@ -230,7 +231,7 @@ int myaesencrypt(const ra_samp_request_header_t *p_msgenc,
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
-    if (memcpy_s(p_msg2_full->body + data_size, SGX_CMAC_MAC_SIZE, mac, SGX_CMAC_MAC_SIZE))
+    if (memcpy_s(p_msg2_full->body + data_size, SGX_AESGCM_MAC_SIZE, mac, SGX_AESGCM_MAC_SIZE))
     {
         fprintf(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
@@ -276,14 +277,14 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
     uint8_t p_data[LENOFMSE] = {0};
     uint8_t out_data[LENOFMSE] = {0};
     ra_samp_response_header_t *p_msg2_full = NULL;
-    uint8_t data_size = msg_size - SGX_CMAC_MAC_SIZE;
+    uint8_t data_size = msg_size - SGX_AESGCM_MAC_SIZE;
     uint8_t msg2_size = data_size;
 
     printf("====%d %d\n", data_size, msg_size);
     PRINT_BYTE_ARRAY(stdout, (uint8_t *) p_msgenc, msg_size);
 
     memcpy_s(p_data, msg_size, p_msgenc, msg_size);
-    memcpy_s(mac, SGX_CMAC_MAC_SIZE, p_data + data_size, SGX_CMAC_MAC_SIZE);
+    memcpy_s(mac, SGX_AESGCM_MAC_SIZE, p_data + data_size, SGX_AESGCM_MAC_SIZE);
     do
     {
         ret = enclave_decrypt(
@@ -298,7 +299,7 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
         return ret;
     fprintf(stdout, "\nData of Decrypt and mac is\n");
     PRINT_BYTE_ARRAY(stdout, p_data, data_size);
-    PRINT_BYTE_ARRAY(stdout, mac, SGX_CMAC_MAC_SIZE);
+    PRINT_BYTE_ARRAY(stdout, mac, SGX_AESGCM_MAC_SIZE);
     fprintf(stdout, "\nData of Decrypted is\n");
     PRINT_BYTE_ARRAY(stdout, out_data, data_size);
 
@@ -353,6 +354,7 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
 int main(int argc, char *argv[])
 {
     int ret = 0;
+    AibeAlgo aibeAlgo;
     ra_samp_request_header_t *p_msg0_full = NULL;
     ra_samp_response_header_t *p_msg0_resp_full = NULL;
     ra_samp_request_header_t *p_msg1_full = NULL;
@@ -377,6 +379,8 @@ int main(int argc, char *argv[])
     int server_port = 12333;
     int buflen = 0;
     uint32_t extended_epid_group_id = 0;
+
+    aibeAlgo.load_param(file_path);
     { // creates the cryptserver enclave.
 
         ret = sgx_get_extended_epid_group_id(&extended_epid_group_id);
