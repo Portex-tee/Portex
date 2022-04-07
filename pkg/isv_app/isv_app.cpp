@@ -380,7 +380,17 @@ int main(int argc, char *argv[])
     int buflen = 0;
     uint32_t extended_epid_group_id = 0;
 
-    aibeAlgo.load_param(file_path);
+//    aibeAlgo.load_param(param_path);
+//    puts("param loaded");
+//    aibeAlgo.init();
+//    puts("init");
+//    aibeAlgo.server_setup_generate();
+//    puts("mpk generated");
+//    aibeAlgo.server_setup_load();
+//    puts("mpk loaded");
+
+    aibeAlgo.run(OUTPUT);
+
     { // creates the cryptserver enclave.
 
         ret = sgx_get_extended_epid_group_id(&extended_epid_group_id);
