@@ -74,9 +74,11 @@ public:
 
     int load_param(const char *fn);
 
-    void server_setup_generate();
+    void pkg_setup_generate();
 
-    void server_setup_load();
+    void msk_load();
+
+    void mpk_load();
 
     void init();
 
@@ -143,7 +145,8 @@ int AibeAlgo::run(FILE *OUTPUT) {
     init();
 
 ////    todo: server aibe load_param
-    server_setup_load();
+    mpk_load();
+    msk_load();
 
     puts("\nPKG: setup finished");
 
@@ -157,7 +160,7 @@ int AibeAlgo::run(FILE *OUTPUT) {
     puts("\nPKG: keygen2 finished");
 
 ////    aibe: keygen3
-    if (!keygen3()) {
+    if (keygen3()) {
         fprintf(stderr, "\nKey verify failed");
         goto CLEANUP;
     }
@@ -220,7 +223,7 @@ void AibeAlgo::init() {
 
 }
 
-void AibeAlgo::server_setup_generate() {
+void AibeAlgo::pkg_setup_generate() {
     FILE *fpk = fopen(mpk_path, "w+");
     FILE *fsk = fopen(msk_path, "w+");
 
@@ -264,9 +267,8 @@ void AibeAlgo::server_setup_generate() {
     fclose(fsk);
 }
 
-void AibeAlgo::server_setup_load() {
+void AibeAlgo::mpk_load() {
     FILE *fpk = fopen(mpk_path, "r+");
-    FILE *fsk = fopen(msk_path, "r+");
 
     char buffer[1024];
 
@@ -284,9 +286,6 @@ void AibeAlgo::server_setup_load() {
         element_from_bytes_compressed(mpk.Z[i], (unsigned char *) buffer);
     }
 
-    fread(buffer, size_Zr, 1, fpk);
-    element_from_bytes(x, (unsigned char *) buffer);
-
     // test
 //    element_printf("%B\n", g);
 //    element_printf("%B\n", mpk.X);
@@ -298,6 +297,16 @@ void AibeAlgo::server_setup_load() {
 //    element_printf("%B\n", x);
 
     fclose(fpk);
+}
+
+void AibeAlgo::msk_load() {
+    FILE *fsk = fopen(msk_path, "r+");
+
+    char buffer[1024];
+
+    fread(buffer, size_Zr, 1, fsk);
+    element_from_bytes(x, (unsigned char *) buffer);
+
     fclose(fsk);
 }
 

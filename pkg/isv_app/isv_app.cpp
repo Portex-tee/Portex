@@ -380,16 +380,15 @@ int main(int argc, char *argv[])
     int buflen = 0;
     uint32_t extended_epid_group_id = 0;
 
-//    aibeAlgo.load_param(param_path);
-//    puts("param loaded");
-//    aibeAlgo.init();
-//    puts("init");
-//    aibeAlgo.server_setup_generate();
-//    puts("mpk generated");
-//    aibeAlgo.server_setup_load();
-//    puts("mpk loaded");
+    aibeAlgo.load_param(param_path);
+    puts("param loaded");
+    aibeAlgo.init();
+    puts("init");
+    aibeAlgo.mpk_load();
+    aibeAlgo.msk_load();
+    puts("mpk loaded");
 
-    aibeAlgo.run(OUTPUT);
+//    aibeAlgo.run(OUTPUT);
 
     { // creates the cryptserver enclave.
 
@@ -547,9 +546,9 @@ int main(int argc, char *argv[])
                 {
                     sample_ec_key_128bit_t secret;
                     get_secret(&secret);
-                    ret = put_secret_data(enclave_id,
-                                          &status,
-                                          secret);
+                    put_secret_data(enclave_id,
+                                      &status,
+                                      secret);
                 }
 
 
@@ -558,9 +557,8 @@ int main(int argc, char *argv[])
                 break;
 
             //进行解密
-            case TYPE_RA_MSGDEC:
-                fprintf(OUTPUT, "\nProcess Decrypt");
-                fprintf(OUTPUT, "\nDecrypt 1 %d %x",enclave_id, status);
+            case TYPE_RA_KEYGEN:
+                fprintf(OUTPUT, "\nProcess Keygen");
                 /*SGX_ERROR_MAC_MISMATCH 0x3001 Indicates verification error for reports, sealed datas, etc */
                 ret = myaesdecrypt((const ra_samp_request_header_t *)((uint8_t *)p_req +
                                                                       sizeof(ra_samp_request_header_t)),
@@ -577,22 +575,22 @@ int main(int argc, char *argv[])
                 SAFE_FREE(p_req);              
                 goto CLEANUP;
             //进行加密
-            case TYPE_RA_MSGENC:
-                fprintf(OUTPUT, "\nProcess Encrypt");
-                ret = myaesencrypt((const ra_samp_request_header_t *)((uint8_t *)p_req +
-                                                              sizeof(ra_samp_request_header_t)),
-                                   p_req->size,
-                                   enclave_id,
-                                   &status,
-                                   context);
-                fprintf(OUTPUT, "\nEncrypt Done %d %d",enclave_id, status);
-                if (0 != ret)
-                {
-                    fprintf(stderr, "\nError, call encrypt fail [%s].",
-                            __FUNCTION__);
-                }
-                SAFE_FREE(p_req);
-                break;
+//            case TYPE_RA_MSGENC:
+//                fprintf(OUTPUT, "\nProcess Encrypt");
+//                ret = myaesencrypt((const ra_samp_request_header_t *)((uint8_t *)p_req +
+//                                                              sizeof(ra_samp_request_header_t)),
+//                                   p_req->size,
+//                                   enclave_id,
+//                                   &status,
+//                                   context);
+//                fprintf(OUTPUT, "\nEncrypt Done %d %d",enclave_id, status);
+//                if (0 != ret)
+//                {
+//                    fprintf(stderr, "\nError, call encrypt fail [%s].",
+//                            __FUNCTION__);
+//                }
+//                SAFE_FREE(p_req);
+//                break;
             default:
                 ret = -1;
                 fprintf(stderr, "\nError, unknown ra message type. Type = %d [%s].",

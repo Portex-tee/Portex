@@ -11,7 +11,9 @@
 #define N 8
 const int z_size = N + 1;
 const int ID = 0b10101010;
-const char file_path[] = "param/aibe.param";
+const char param_path[] = "param/aibe.param";
+const char mpk_path[] = "param/mpk.out";
+const char msk_path[] = "param/msk.out";
 
 
 typedef struct mpk_t {
@@ -64,13 +66,19 @@ public:
 
     pairing_t pairing;
 
+    int size_comp_G1, size_comp_G2, size_Zr;
+
     AibeAlgo(){};
 
     int run(FILE *OUTPUT);
 
     int load_param(const char *fn);
 
-    void server_setup();
+    void pkg_setup_generate();
+
+    void msk_load();
+
+    void mpk_load();
 
     void init();
 
@@ -125,7 +133,7 @@ int AibeAlgo::run(FILE *OUTPUT) {
 
     //aibe load_param
 
-    if (load_param(file_path)) {
+    if (load_param(param_path)) {
         ret = -1;
         fprintf(stderr, "\nParam File Path error");
         goto CLEANUP;
@@ -137,7 +145,8 @@ int AibeAlgo::run(FILE *OUTPUT) {
     init();
 
 ////    todo: server aibe load_param
-    server_setup();
+    mpk_load();
+    msk_load();
 
     puts("\nPKG: setup finished");
 
@@ -180,6 +189,10 @@ int AibeAlgo::load_param(const char *fn) {
     fclose(param_file);
     pairing_init_set_buf(pairing, param, count);
 
+    size_comp_G1 = pairing_length_in_bytes_compressed_G1(pairing);
+    size_comp_G2 = pairing_length_in_bytes_compressed_G2(pairing);
+    size_Zr = pairing_length_in_bytes_Zr(pairing);
+
     CLEANUP:
     return ret;
 }
@@ -210,7 +223,10 @@ void AibeAlgo::init() {
 
 }
 
-void AibeAlgo::server_setup() {
+void AibeAlgo::pkg_setup_generate() {
+    FILE *fpk = fopen(mpk_path, "w+");
+    FILE *fsk = fopen(msk_path, "w+");
+
     element_random(g);
     element_random(mpk.h);
     element_random(mpk.Y);
@@ -220,6 +236,78 @@ void AibeAlgo::server_setup() {
     }
     element_pow_zn(mpk.X, g, x);
 
+    uint8_t buffer[1024];
+
+    element_to_bytes_compressed(buffer, g);
+    fwrite(buffer, size_comp_G2, 1, fpk);
+    element_to_bytes_compressed(buffer, mpk.X);
+    fwrite(buffer, size_comp_G1, 1, fpk);
+    element_to_bytes_compressed(buffer, mpk.Y);
+    fwrite(buffer, size_comp_G1, 1, fpk);
+    element_to_bytes_compressed(buffer, mpk.h);
+    fwrite(buffer, size_comp_G1, 1, fpk);
+    for (int i = 0; i < N; ++i) {
+        element_to_bytes_compressed(buffer, mpk.Z[i]);
+        fwrite(buffer, size_comp_G1, 1, fpk);
+    }
+
+    element_to_bytes(buffer, x);
+    fwrite(buffer, size_Zr, 1, fsk);
+
+//    element_printf("%B\n", g);
+//    element_printf("%B\n", mpk.X);
+//    element_printf("%B\n", mpk.Y);
+//    element_printf("%B\n", mpk.h);
+//    for (int i = 0; i < N; ++i) {
+//        element_printf("%B\n", mpk.Z[i]);
+//    }
+//    element_printf("%B\n", x);
+
+    fclose(fpk);
+    fclose(fsk);
+}
+
+void AibeAlgo::mpk_load() {
+    FILE *fpk = fopen(mpk_path, "r+");
+
+    char buffer[1024];
+
+    fread(buffer, size_comp_G2, 1, fpk);
+    element_from_bytes_compressed(g, (unsigned char *) buffer);
+    fread(buffer, size_comp_G1, 1, fpk);
+    element_from_bytes_compressed(mpk.X, (unsigned char *) buffer);
+    fread(buffer, size_comp_G1, 1, fpk);
+    element_from_bytes_compressed(mpk.Y, (unsigned char *) buffer);
+    fread(buffer, size_comp_G1, 1, fpk);
+    element_from_bytes_compressed(mpk.h, (unsigned char *) buffer);
+
+    for (int i = 0; i < N; ++i) {
+        fread(buffer, size_comp_G1, 1, fpk);
+        element_from_bytes_compressed(mpk.Z[i], (unsigned char *) buffer);
+    }
+
+    // test
+//    element_printf("%B\n", g);
+//    element_printf("%B\n", mpk.X);
+//    element_printf("%B\n", mpk.Y);
+//    element_printf("%B\n", mpk.h);
+//    for (int i = 0; i < N; ++i) {
+//        element_printf("%B\n", mpk.Z[i]);
+//    }
+//    element_printf("%B\n", x);
+
+    fclose(fpk);
+}
+
+void AibeAlgo::msk_load() {
+    FILE *fsk = fopen(msk_path, "r+");
+
+    char buffer[1024];
+
+    fread(buffer, size_Zr, 1, fsk);
+    element_from_bytes(x, (unsigned char *) buffer);
+
+    fclose(fsk);
 }
 
 // client keygen 1

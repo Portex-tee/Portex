@@ -96,16 +96,16 @@ int main(int argc, char *argv[])
     sgx_aes_gcm_128bit_tag_t mac;
 
     int data_len;
-    uint8_t data[256] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-    uint8_t encrypt_data[256];
-    uint8_t decrypt_data[256];
+    uint8_t data[1024];
+    uint8_t encrypt_data[1024];
+    uint8_t decrypt_data[1024];
     FILE *OUTPUT = stdout;
 
 
     //aibe load_param
     pairing_t pairing;
     char param[1024];
-    FILE *param_file = fopen(file_path, "r");
+    FILE *param_file = fopen(param_path, "r");
     size_t count = fread(param, sizeof(char), 1024, param_file);
     if (!count) {
         pbc_die("param file path error");
@@ -151,7 +151,7 @@ int main(int argc, char *argv[])
 
     //aibe load_param
 
-    if (aibeAlgo.load_param(file_path)) {
+    if (aibeAlgo.load_param(param_path)) {
         ret = -1;
         fprintf(stderr, "\nParam File Path error");
         goto CLEANUP;
@@ -163,33 +163,36 @@ int main(int argc, char *argv[])
     aibeAlgo.init();
 
 ////    todo: server aibe load_param
-    aibeAlgo.server_setup();
+    aibeAlgo.mpk_load();
 
     puts("\nPKG: setup finished");
 
 ////    aibe: keygen1
 
     aibeAlgo.keygen1(ID);
-// todo: finish the transport
-    data_len = element_length_in_bytes(aibeAlgo.R);
-    printf("R in length: %d\n", data_len);
-    element_printf("R: \n%B\n", aibeAlgo.R);
 
-    element_to_bytes(data, aibeAlgo.R);
+    ra_samp_request_header_t requestHeader;
+    ra_samp_response_header_t responseHeader;
 
-    puts("ra_encrypt start===");
-    ra_encrypt(data, data_len, encrypt_data, mac, enclave_id, OUTPUT);
-    PRINT_BYTE_ARRAY(OUTPUT, encrypt_data, data_len);
-
-    puts("ra_decrypt start===");
-    ra_decrypt(encrypt_data, data_len, decrypt_data, mac, enclave_id, OUTPUT);
-    PRINT_BYTE_ARRAY(OUTPUT, decrypt_data, data_len);
-
-    element_from_bytes(aibeAlgo.R, decrypt_data);
-    data_len = element_length_in_bytes(aibeAlgo.R);
-    puts("After encrypt and decrypt:");
-    printf("R in length: %d\n", data_len);
-    element_printf("R: \n%B\n", aibeAlgo.R);
+//    data_len = element_length_in_bytes(aibeAlgo.R);
+//    printf("R in length: %d\n", aibeAlgo.size_comp_G1);
+//    element_printf("R: \n%B\n", aibeAlgo.R);
+//
+//    element_to_bytes_compressed(data, aibeAlgo.R);
+//
+//    puts("ra_encrypt start===");
+//    ra_encrypt(data, data_len, encrypt_data, mac, enclave_id, OUTPUT);
+//    PRINT_BYTE_ARRAY(OUTPUT, encrypt_data, data_len);
+//
+//    puts("ra_decrypt start===");
+//    ra_decrypt(encrypt_data, data_len, decrypt_data, mac, enclave_id, OUTPUT);
+//    PRINT_BYTE_ARRAY(OUTPUT, decrypt_data, data_len);
+//
+//    element_from_bytes_compressed(aibeAlgo.R, decrypt_data);
+//    data_len = element_length_in_bytes(aibeAlgo.R);
+//    puts("After encrypt and decrypt:");
+//    printf("R in length: %d\n", data_len);
+//    element_printf("R: \n%B\n", aibeAlgo.R);
 
     fprintf(OUTPUT, "\nA-IBE Success Keygen1 ");
 
