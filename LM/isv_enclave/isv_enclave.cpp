@@ -35,6 +35,8 @@
 #include "sgx_tkey_exchange.h"
 #include "sgx_tcrypto.h"
 #include "string.h"
+#include "stdio.h"
+
 // This is the public EC key of the SP. The corresponding private EC key is
 // used by the SP to sign data used in the remote attestation SIGMA protocol
 // to sign channel binding data in MSG2. A successful verification of the
@@ -67,10 +69,6 @@ static const sgx_ec256_public_t g_sp_pub_key = {
 // 0x01,0x02,0x03,0x04,0x0x5,0x0x6,0x0x7
 uint8_t g_secret[8] = {0};
 sgx_ec_key_128bit_t sk_key;
-//lhadd
-sgx_ec_key_128bit_t aes_key;
-sgx_ec_key_128bit_t aes2_key;
-
 #ifdef SUPPLIED_KEY_DERIVATION
 
 #pragma message ("Supplied key derivation function is used.")
@@ -378,83 +376,21 @@ sgx_status_t put_secret_data(
         // perform remote attestation until the secret goes stale. Once the
         // enclave is created again, the secret can be unsealed.
     } while(0);
-    return ret;
-}
-
-// Generate a secret information for the SP encrypted with SK.
-// Input pointers aren't checked since the trusted stubs copy
-// them into EPC memory.
-//
-// @param context The trusted KE library key context.
-// @param p_secret Message containing the secret.
-// @param secret_size Size in bytes of the secret message.
-// @param p_gcm_mac The pointer the the AESGCM MAC for the
-//                 message.
-//
-// @return SGX_ERROR_INVALID_PARAMETER - secret size if
-//         incorrect.
-// @return Any error produced by tKE  API to get SK key.
-// @return Any error produced by the AESGCM function.
-// @return SGX_ERROR_UNEXPECTED - the secret doesn't match the
-//         expected value.
-
-sgx_status_t enclave_generate_key(
-    uint8_t *p_data,
-    uint32_t secret_size)
-{
-    sgx_status_t ret = SGX_SUCCESS;
-
-    if(secret_size != 32)
-    return SGX_ERROR_INVALID_METADATA;
-
-    uint8_t aes_gcm_iv[12] = {0};
-    uint8_t out_data[32] = {0};
-    int i = 0;
-    sgx_aes_gcm_128bit_tag_t c_gcm_mac;
-    do {
-        //首先验证16个字节是不是token
-        ret = sgx_rijndael128GCM_decrypt(&sk_key,
-                                         p_data,
-                                         32,
-                                         &out_data[0],
-                                         &aes_gcm_iv[0],
-                                         12,
-                                         NULL,
-                                         0,
-                                         &c_gcm_mac);
-        if(SGX_SUCCESS != ret)
-        {
-            break;
-        }
-    } while(0);
-    //token这个硬编码成5到20
-    bool secret_match = true;
-    for(i=0;i<16;i++)
-    {
-        if(out_data[i] != i+5)
-        {
-            secret_match = false;
-        }
-    }
-    if(secret_match == true)
-    {//设定后16字节为key
-        memcpy((void* )&aes_key, &out_data[16], 16);
-        memcpy((void* )&aes2_key, &out_data[16], 16);
-    }
 
     return ret;
 }
+
 
 sgx_status_t enclave_encrypt(
-    uint8_t *p_data,
-    uint32_t secret_size,
-    uint8_t *out_data)
+        uint8_t *p_data,
+        uint32_t secret_size,
+        uint8_t *out_data,
+        uint8_t *out_mac)
 {
     sgx_status_t ret = SGX_SUCCESS;
-    sgx_aes_gcm_128bit_tag_t c_gcm_mac;
     do {
         uint8_t aes_gcm_iv[12] = {0};
-        ret = sgx_rijndael128GCM_encrypt(&aes_key,
+        ret = sgx_rijndael128GCM_encrypt(&sk_key,
                                          p_data,
                                          secret_size,
                                          out_data,
@@ -462,7 +398,7 @@ sgx_status_t enclave_encrypt(
                                          12,
                                          NULL,
                                          0,
-                                         &c_gcm_mac);
+                                         (sgx_aes_gcm_128bit_tag_t *) out_mac);
         if(SGX_SUCCESS != ret)
         {
             break;
@@ -472,16 +408,15 @@ sgx_status_t enclave_encrypt(
 }
 
 sgx_status_t enclave_decrypt(
-    uint8_t *p_data,
-    uint32_t secret_size,
-    uint8_t *out_data)
+        uint8_t *p_data,
+        uint32_t secret_size,
+        uint8_t *out_data,
+        uint8_t *in_mac)
 {
     sgx_status_t ret = SGX_SUCCESS;
-    sgx_aes_gcm_128bit_tag_t c_gcm_mac;
-    memcpy(out_data, &aes2_key,16);
+    uint8_t aes_gcm_iv[12] = {0};
     do {
-        uint8_t aes_gcm_iv[12] = {0};
-        ret = sgx_rijndael128GCM_decrypt(&aes2_key,
+        ret = sgx_rijndael128GCM_decrypt(&sk_key,
                                          p_data,
                                          secret_size,
                                          out_data,
@@ -489,10 +424,9 @@ sgx_status_t enclave_decrypt(
                                          12,
                                          NULL,
                                          0,
-                                         (const sgx_aes_gcm_128bit_tag_t *)&c_gcm_mac);
+                                         (const sgx_aes_gcm_128bit_tag_t *) in_mac);
         if(SGX_SUCCESS != ret)
         {
-            
             break;
         }
     } while(0);

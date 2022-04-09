@@ -37,6 +37,9 @@
 
 #include <stdint.h>
 
+#ifndef CLIENT_SAMPLE_MESSAGES_H
+#define CLIENT_SAMPLE_MESSAGES_H
+
 #define MSG1_BODY_SIZE 68
 
 uint8_t msg1_sample1[MSG1_BODY_SIZE] =
@@ -541,3 +544,5 @@ uint8_t attestation_msg_sample2[ATTESTATION_MSG_BODY_SIZE] =
     0x7b, 0x85, 0x3f, 0x8, 0x3f, 0x48, 0x6d, 0x2d,
     0xad
 };
+
+#endif

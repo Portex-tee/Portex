@@ -110,26 +110,7 @@ uint8_t g_secret[8] = {0,1,2,3,4,5,6,7};
 
 sample_spid_t g_spid;
 
-void PRINT_BYTE_ARRAY(
-    FILE *file, void *mem, uint32_t len)
-{
-    if (!mem || !len)
-    {
-        fprintf(file, "\n( null )\n");
-        return;
-    }
-    uint8_t *array = (uint8_t *)mem;
-    fprintf(file, "%u bytes:\n{\n", len);
-    uint32_t i = 0;
-    for (i = 0; i < len - 1; i++)
-    {
-        fprintf(file, "0x%x, ", array[i]);
-        if (i % 8 == 7)
-            fprintf(file, "\n");
-    }
-    fprintf(file, "0x%x ", array[i]);
-    fprintf(file, "\n}\n");
-}
+
 // Verify message 0 then configure extended epid group.
 int sp_ra_proc_msg0_req(const sample_ra_msg0_t *p_msg0,
     uint32_t msg0_size)
@@ -161,8 +142,6 @@ int sp_ra_proc_msg0_req(const sample_ra_msg0_t *p_msg0,
                 // For a product attestation server, enrollment is an offline process.  See the 'on-boarding'
                 // documentation to get the information required.  The enrollment process is
                 // simulated by a call in this sample.
-
-                // Enroll to get SPID and Report Key
                 ret = g_sp_extended_epid_group_id->enroll(g_sp_credentials, &g_spid,
                     &g_authentication_token);
                 if (0 != ret)
@@ -190,7 +169,6 @@ int sp_ra_proc_msg1_req(const sample_ra_msg1_t *p_msg1,
 						uint32_t msg1_size,
 						ra_samp_response_header_t **pp_msg2)
 {
-    
     int ret = 0;
     ra_samp_response_header_t* p_msg2_full = NULL;
     sample_ra_msg2_t *p_msg2 = NULL;
@@ -204,12 +182,13 @@ int sp_ra_proc_msg1_req(const sample_ra_msg1_t *p_msg1,
     {
         return -1;
     }
-    
+
     // Check to see if we have registered?
     if (!g_is_sp_registered)
     {
         return SP_UNSUPPORTED_EXTENDED_EPID_GROUP;
     }
+
     do
     {
         // Get the sig_rl from attestation server using GID.
@@ -275,7 +254,6 @@ int sp_ra_proc_msg1_req(const sample_ra_msg1_t *p_msg1,
             (sample_ec256_public_t *)&p_msg1->g_a,
             (sample_ec256_dh_shared_t *)&dh_key,
             ecc_state);
-        
         if(SAMPLE_SUCCESS != sample_ret)
         {
             fprintf(stderr, "\nError, compute share key fail in [%s].",
@@ -289,7 +267,6 @@ int sp_ra_proc_msg1_req(const sample_ra_msg1_t *p_msg1,
         // smk is only needed for msg2 generation.
         derive_ret = derive_key(&dh_key, SAMPLE_DERIVE_KEY_SMK_SK,
             &g_sp_db.smk_key, &g_sp_db.sk_key);
-        fprintf(stderr, "\nSupplied key Derivation.",
         if(derive_ret != true)
         {
             fprintf(stderr, "\nError, derive key fail in [%s].", __FUNCTION__);
@@ -326,7 +303,7 @@ int sp_ra_proc_msg1_req(const sample_ra_msg1_t *p_msg1,
             ret = SP_INTERNAL_ERROR;
             break;
         }
-        
+
         derive_ret = derive_key(&dh_key, SAMPLE_DERIVE_KEY_SK,
                                 &g_sp_db.sk_key);
         if(derive_ret != true)
@@ -335,9 +312,7 @@ int sp_ra_proc_msg1_req(const sample_ra_msg1_t *p_msg1,
             ret = SP_INTERNAL_ERROR;
             break;
         }
-        fprintf(stdout, "\nNOT Supplied key Derivation.");
-        PRINT_BYTE_ARRAY( stdout, &dh_key, sizeof(sample_ec_dh_shared_t));
-        PRINT_BYTE_ARRAY( stdout, &g_sp_db.sk_key, 16);
+
         derive_ret = derive_key(&dh_key, SAMPLE_DERIVE_KEY_VK,
                                 &g_sp_db.vk_key);
         if(derive_ret != true)
@@ -365,7 +340,6 @@ int sp_ra_proc_msg1_req(const sample_ra_msg1_t *p_msg1,
         p_msg2_full->status[0] = 0;
         p_msg2_full->status[1] = 0;
         p_msg2 = (sample_ra_msg2_t *)p_msg2_full->body;
-        
 
         // Assemble MSG2
         if(memcpy_s(&p_msg2->g_b, sizeof(p_msg2->g_b), &g_sp_db.g_b,
@@ -400,7 +374,7 @@ int sp_ra_proc_msg1_req(const sample_ra_msg1_t *p_msg1,
             ret = SP_INTERNAL_ERROR;
             break;
         }
-        
+
         // Sign gb_ga
         sample_ret = sample_ecdsa_sign((uint8_t *)&gb_ga, sizeof(gb_ga),
                         (sample_ec256_private_t *)&g_sp_priv_key,
@@ -430,7 +404,7 @@ int sp_ra_proc_msg1_req(const sample_ra_msg1_t *p_msg1,
             ret = SP_INTERNAL_ERROR;
             break;
         }
-        
+
         if(memcpy_s(&p_msg2->sig_rl[0], sig_rl_size, sig_rl, sig_rl_size))
         {
             fprintf(stderr,"\nError, memcpy failed in [%s].", __FUNCTION__);
@@ -440,6 +414,7 @@ int sp_ra_proc_msg1_req(const sample_ra_msg1_t *p_msg1,
         p_msg2->sig_rl_size = sig_rl_size;
 
     }while(0);
+
     if(ret)
     {
         *pp_msg2 = NULL;
@@ -455,7 +430,7 @@ int sp_ra_proc_msg1_req(const sample_ra_msg1_t *p_msg1,
     {
         sample_ecc256_close_context(ecc_state);
     }
-    printf("here1\n");
+
     return ret;
 }
 
@@ -632,7 +607,7 @@ int sp_ra_proc_msg3_req(const sample_ra_msg3_t *p_msg3,
         uint32_t att_result_msg_size = sizeof(sample_ra_att_result_msg_t);
         p_att_result_msg_full =
             (ra_samp_response_header_t*)malloc(att_result_msg_size
-            + sizeof(ra_samp_response_header_t) + sizeof(g_secret)+8);
+            + sizeof(ra_samp_response_header_t) + sizeof(g_secret));
         if(!p_att_result_msg_full)
         {
             fprintf(stderr, "\nError, out of memory in [%s].", __FUNCTION__);
@@ -640,9 +615,9 @@ int sp_ra_proc_msg3_req(const sample_ra_msg3_t *p_msg3,
             break;
         }
         memset(p_att_result_msg_full, 0, att_result_msg_size
-               + sizeof(ra_samp_response_header_t) + sizeof(g_secret) + 8);
+               + sizeof(ra_samp_response_header_t) + sizeof(g_secret));
         p_att_result_msg_full->type = TYPE_RA_ATT_RESULT;
-        p_att_result_msg_full->size = att_result_msg_size+8;
+        p_att_result_msg_full->size = att_result_msg_size;
         if(IAS_QUOTE_OK != attestation_report.status)
         {
             p_att_result_msg_full->status[0] = 0xFF;
@@ -746,12 +721,6 @@ int sp_ra_proc_msg3_req(const sample_ra_msg3_t *p_msg3,
                         0,
                         &p_att_result_msg->secret.payload_tag);
         }
-        fprintf(stdout, "the key from deriation is \n");
-        PRINT_BYTE_ARRAY(OUTPUT, &g_sp_db.sk_key, 16);
-        fprintf(stdout, "secret payload is \n");
-        PRINT_BYTE_ARRAY(OUTPUT, &p_att_result_msg->secret, 64);
-        fprintf(stdout,"size = %d , secret tag is \n", p_att_result_msg->secret.payload_size);
-        PRINT_BYTE_ARRAY(OUTPUT,p_att_result_msg->secret.payload_tag, SAMPLE_SP_TAG_SIZE);
     }while(0);
 
     if(ret)
@@ -761,11 +730,8 @@ int sp_ra_proc_msg3_req(const sample_ra_msg3_t *p_msg3,
     }
     else
     {
-        
         // Freed by the network simulator in ra_free_network_response_buffer
         *pp_att_result_msg = p_att_result_msg_full;
-        fprintf(stdout, "last message payload is \n");
-        PRINT_BYTE_ARRAY(OUTPUT,p_att_result_msg_full, p_att_result_msg_full->size + sizeof(ra_samp_response_header_t)+8);
     }
     return ret;
 }

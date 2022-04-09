@@ -61,6 +61,8 @@
 
 #include "aibe.h"
 
+#define LENOFMSE 1024
+
 #ifndef SAFE_FREE
 #define SAFE_FREE(ptr)     \
     {                      \
@@ -82,6 +84,106 @@
 extern char sendbuf[BUFSIZ]; //数据传送的缓冲区
 extern char recvbuf[BUFSIZ];
 
+
+int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT) {
+    int ret = 0;
+    sgx_status_t status = SGX_SUCCESS;
+    ra_samp_request_header_t *p_request = NULL;
+    ra_samp_response_header_t *p_response = NULL;
+    int recvlen = 0;
+    int busy_retry_time;
+    int data_size;
+    int msg_size;
+
+    uint8_t p_data[LENOFMSE] = {0};
+    uint8_t out_data[LENOFMSE] = {0};
+    sgx_aes_gcm_128bit_tag_t mac;
+
+    // keygen 1
+    aibeAlgo.keygen1(id);
+
+    data_size = aibeAlgo.size_comp_G1 * 2;
+    element_to_bytes_compressed(p_data, aibeAlgo.R);
+    element_to_bytes_compressed(p_data + aibeAlgo.size_comp_G1, aibeAlgo.Hz);
+    ra_encrypt(p_data, data_size, out_data, mac, enclave_id, OUTPUT);
+
+    element_fprintf(OUTPUT, "\nSend R:\n%B", aibeAlgo.R);
+
+    msg_size = data_size + SGX_AESGCM_MAC_SIZE;
+    p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);
+    p_request->size = msg_size;
+    p_request->type = TYPE_RA_KEYGEN;
+
+    if (memcpy_s(p_request->body, data_size, out_data, data_size)) {
+        fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
+                __FUNCTION__, __LINE__);
+        ret = -1;
+        goto CLEANUP;
+    }
+    if (memcpy_s(p_request->body + data_size, SGX_AESGCM_MAC_SIZE, mac, SGX_AESGCM_MAC_SIZE)) {
+        fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
+                __FUNCTION__, __LINE__);
+        ret = -1;
+        goto CLEANUP;
+    }
+
+    memset(sendbuf, 0, BUFSIZ);
+    memcpy_s(sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + msg_size);
+    SendToServer(sizeof(ra_samp_request_header_t) + p_request->size);
+
+    // keygen 3
+    recvlen = RecvfromServer();
+    p_response = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) recvbuf)->size);
+
+    if (memcpy_s(p_response, recvlen, recvbuf, recvlen)) {
+        fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
+                __FUNCTION__, __LINE__);
+        ret = -1;
+        goto CLEANUP;
+    }
+    if ((p_response->type != TYPE_RA_KEYGEN)) {
+        fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
+                __FUNCTION__, __LINE__);
+        ret = -1;
+        goto CLEANUP;
+    }
+
+    data_size = p_response->size - SGX_AESGCM_MAC_SIZE;
+
+    memcpy_s(p_data, data_size, p_response->body, data_size);
+    memcpy_s(mac, SGX_AESGCM_MAC_SIZE, p_response->body + data_size, SGX_AESGCM_MAC_SIZE);
+//    fprintf(OUTPUT, "\nSuccess Encrypt\n");
+//    PRINT_BYTE_ARRAY(OUTPUT, p_data, sizeof(p_data));
+//    fprintf(OUTPUT, "\nEncrypt Mac\n");
+//    PRINT_BYTE_ARRAY(OUTPUT, mac, SGX_AESGCM_MAC_SIZE);
+
+    ra_decrypt(p_data, data_size, out_data, mac, enclave_id, OUTPUT);
+
+    dk_from_bytes(&aibeAlgo.dk1, out_data, aibeAlgo.size_comp_G1);
+    {
+        fprintf(stdout, "\nData of dk' is\n");
+        element_fprintf(stdout, "dk'.d1: %B\n", aibeAlgo.dk1.d1);
+        element_fprintf(stdout, "dk'.d2: %B\n", aibeAlgo.dk1.d2);
+        element_fprintf(stdout, "dk'.d3: %B\n", aibeAlgo.dk1.d3);
+    }
+
+    if (aibeAlgo.keygen3()) {
+        ret = -1;
+        goto CLEANUP;
+    }
+
+    {
+        fprintf(stdout, "\nData of dk is\n");
+        element_fprintf(stdout, "dk.d1: %B\n", aibeAlgo.dk.d1);
+        element_fprintf(stdout, "dk.d2: %B\n", aibeAlgo.dk.d2);
+        element_fprintf(stdout, "dk.d3: %B\n", aibeAlgo.dk.d3);
+    }
+
+    CLEANUP:
+    SAFE_FREE(p_response);
+    return ret;
+}
+
 // This sample code doesn't have any recovery/retry mechanisms for the remote
 // attestation. Since the enclave can be lost due S3 transitions, apps
 // susceptible to S3 transitions should have logic to restart attestation in
@@ -93,12 +195,6 @@ int main(int argc, char *argv[])
     int ret = 0;
     sgx_enclave_id_t enclave_id = 0;
     AibeAlgo aibeAlgo;
-    sgx_aes_gcm_128bit_tag_t mac;
-
-    int data_len;
-    uint8_t data[1024];
-    uint8_t encrypt_data[1024];
-    uint8_t decrypt_data[1024];
     FILE *OUTPUT = stdout;
 
 
@@ -167,47 +263,12 @@ int main(int argc, char *argv[])
 
     puts("\nPKG: setup finished");
 
-////    aibe: keygen1
-
-    aibeAlgo.keygen1(ID);
-
-    ra_samp_request_header_t requestHeader;
-    ra_samp_response_header_t responseHeader;
-
-//    data_len = element_length_in_bytes(aibeAlgo.R);
-//    printf("R in length: %d\n", aibeAlgo.size_comp_G1);
-//    element_printf("R: \n%B\n", aibeAlgo.R);
-//
-//    element_to_bytes_compressed(data, aibeAlgo.R);
-//
-//    puts("ra_encrypt start===");
-//    ra_encrypt(data, data_len, encrypt_data, mac, enclave_id, OUTPUT);
-//    PRINT_BYTE_ARRAY(OUTPUT, encrypt_data, data_len);
-//
-//    puts("ra_decrypt start===");
-//    ra_decrypt(encrypt_data, data_len, decrypt_data, mac, enclave_id, OUTPUT);
-//    PRINT_BYTE_ARRAY(OUTPUT, decrypt_data, data_len);
-//
-//    element_from_bytes_compressed(aibeAlgo.R, decrypt_data);
-//    data_len = element_length_in_bytes(aibeAlgo.R);
-//    puts("After encrypt and decrypt:");
-//    printf("R in length: %d\n", data_len);
-//    element_printf("R: \n%B\n", aibeAlgo.R);
-
-    fprintf(OUTPUT, "\nA-IBE Success Keygen1 ");
-
-////    todo: server aibe keygen2
-    aibeAlgo.keygen2();
-    puts("\nPKG: keygen2 finished");
-
-////    aibe: keygen3
-    if (aibeAlgo.keygen3()) {
+////    aibe: keygen
+    if (client_keygen(ID, aibeAlgo, enclave_id, OUTPUT)) {
         fprintf(stderr, "\nKey verify failed");
         goto CLEANUP;
     }
-
-    fprintf(OUTPUT, "\nA-IBE Success Keygen3 ");
-    //todo: aibe clear
+    fprintf(OUTPUT, "\nA-IBE Success Keygen ");
 
 CLEANUP:
     Cleanupsocket();

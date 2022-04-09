@@ -433,7 +433,7 @@ namespace merkle
       return _leaf_index;
     }
 
-    /// @brief Maximum index of the tree at the time the path was extracted
+    /// @brief Maximum index of the chronTree at the time the path was extracted
     size_t max_index() const
     {
       return _max_index;
@@ -511,7 +511,7 @@ namespace merkle
     /// @brief The index of the leaf
     size_t _leaf_index;
 
-    /// @brief The maximum leaf index of the tree at the time of path extraction
+    /// @brief The maximum leaf index of the chronTree at the time of path extraction
     size_t _max_index;
 
     /// @brief The elements of the path
@@ -530,10 +530,10 @@ namespace merkle
   class TreeT
   {
   protected:
-    /// @brief The structure of tree nodes
+    /// @brief The structure of chronTree nodes
     struct Node
     {
-      /// @brief Constructs a new tree node
+      /// @brief Constructs a new chronTree node
       /// @param hash The hash of the node
       static Node* make(const HashT<HASH_SIZE>& hash)
       {
@@ -546,7 +546,7 @@ namespace merkle
         return r;
       }
 
-      /// @brief Constructs a new tree node
+      /// @brief Constructs a new chronTree node
       /// @param left The left child of the new node
       /// @param right The right child of the new node
       static Node* make(Node* left, Node* right)
@@ -561,12 +561,12 @@ namespace merkle
         return r;
       }
 
-      /// @brief Copies a tree node
+      /// @brief Copies a chronTree node
       /// @param from Node to copy
-      /// @param leaf_nodes Current leaf nodes of the tree
-      /// @param num_flushed Number of flushed nodes of the tree
-      /// @param min_index Minimum leaf index of the tree
-      /// @param max_index Maximum leaf index of the tree
+      /// @param leaf_nodes Current leaf nodes of the chronTree
+      /// @param num_flushed Number of flushed nodes of the chronTree
+      /// @param min_index Minimum leaf index of the chronTree
+      /// @param max_index Maximum leaf index of the chronTree
       /// @param indent Indentation of trace output
       static Node* copy_node(
         const Node* from,
@@ -607,8 +607,8 @@ namespace merkle
         return r;
       }
 
-      /// @brief Checks invariant of a tree node
-      /// @note This indicates whether some basic properties of the tree
+      /// @brief Checks invariant of a chronTree node
+      /// @note This indicates whether some basic properties of the chronTree
       /// construction are violated.
       bool invariant()
       {
@@ -631,7 +631,7 @@ namespace merkle
       }
 
       /// @brief Indicates whether a subtree is full
-      /// @note A subtree is full if the number of nodes under a tree is
+      /// @note A subtree is full if the number of nodes under a chronTree is
       /// 2**height-1.
       bool is_full() const
       {
@@ -640,7 +640,7 @@ namespace merkle
         return size == max_size;
       }
 
-      /// @brief Updates the tree size and height of the subtree under a node
+      /// @brief Updates the chronTree size and height of the subtree under a node
       void update_sizes()
       {
         if (left && right)
@@ -674,25 +674,25 @@ namespace merkle
     };
 
   public:
-    /// @brief The type of hashes in the tree
+    /// @brief The type of hashes in the chronTree
     typedef HashT<HASH_SIZE> Hash;
 
-    /// @brief The type of paths in the tree
+    /// @brief The type of paths in the chronTree
     typedef PathT<HASH_SIZE, HASH_FUNCTION> Path;
 
-    /// @brief The type of the tree
+    /// @brief The type of the chronTree
     typedef TreeT<HASH_SIZE, HASH_FUNCTION> Tree;
 
-    /// @brief Constructs an empty tree
+    /// @brief Constructs an empty chronTree
     TreeT() {}
 
-    /// @brief Copies a tree
+    /// @brief Copies a chronTree
     TreeT(const TreeT& other)
     {
       *this = other;
     }
 
-    /// @brief Moves a tree
+    /// @brief Moves a chronTree
     /// @param other Tree to move
     TreeT(TreeT&& other) :
       leaf_nodes(std::move(other.leaf_nodes)),
@@ -704,23 +704,23 @@ namespace merkle
       walk_stack(std::move(other.walk_stack))
     {}
 
-    /// @brief Deserialises a tree
-    /// @param bytes Byte buffer containing a serialised tree
+    /// @brief Deserialises a chronTree
+    /// @param bytes Byte buffer containing a serialised chronTree
     TreeT(const std::vector<uint8_t>& bytes)
     {
       deserialise(bytes);
     }
 
-    /// @brief Deserialises a tree
-    /// @param bytes Byte buffer containing a serialised tree
+    /// @brief Deserialises a chronTree
+    /// @param bytes Byte buffer containing a serialised chronTree
     /// @param position Position of the first byte within @p bytes
     TreeT(const std::vector<uint8_t>& bytes, size_t& position)
     {
       deserialise(bytes, position);
     }
 
-    /// @brief Constructs a tree containing one root hash
-    /// @param root Root hash of the tree
+    /// @brief Constructs a chronTree containing one root hash
+    /// @param root Root hash of the chronTree
     TreeT(const Hash& root)
     {
       insert(root);
@@ -734,20 +734,20 @@ namespace merkle
         delete (n);
     }
 
-    /// @brief Invariant of the tree
+    /// @brief Invariant of the chronTree
     bool invariant()
     {
       return _root ? _root->invariant() : true;
     }
 
-    /// @brief Inserts a hash into the tree
+    /// @brief Inserts a hash into the chronTree
     /// @param hash Hash to insert
     void insert(const uint8_t* hash)
     {
       insert(Hash(hash));
     }
 
-    /// @brief Inserts a hash into the tree
+    /// @brief Inserts a hash into the chronTree
     /// @param hash Hash to insert
     void insert(const Hash& hash)
     {
@@ -758,7 +758,7 @@ namespace merkle
       statistics.num_insert++;
     }
 
-    /// @brief Inserts multiple hashes into the tree
+    /// @brief Inserts multiple hashes into the chronTree
     /// @param hashes Vector of hashes to insert
     void insert(const std::vector<Hash>& hashes)
     {
@@ -766,7 +766,7 @@ namespace merkle
         insert(hash);
     }
 
-    /// @brief Inserts multiple hashes into the tree
+    /// @brief Inserts multiple hashes into the chronTree
     /// @param hashes List of hashes to insert
     void insert(const std::list<Hash>& hashes)
     {
@@ -774,8 +774,8 @@ namespace merkle
         insert(hash);
     }
 
-    /// @brief Flush the tree to some leaf
-    /// @param index Leaf index to flush the tree to
+    /// @brief Flush the chronTree to some leaf
+    /// @param index Leaf index to flush the chronTree to
     /// @note This invalidates all indicies smaller than @p index and
     /// no paths from them to the root can be extracted anymore.
     void flush_to(size_t index)
@@ -809,8 +809,8 @@ namespace merkle
       num_flushed += num_newly_flushed;
     }
 
-    /// @brief Retracts a tree up to some leaf index
-    /// @param index Leaf index to retract the tree to
+    /// @brief Retracts a chronTree up to some leaf index
+    /// @param index Leaf index to retract the chronTree to
     /// @note This invalidates all indicies greater than @p index and
     /// no paths from them to the root can be extracted anymore.
     void retract_to(size_t index)
@@ -892,9 +892,9 @@ namespace merkle
       assert(num_leaves() == index + 1);
     }
 
-    /// @brief Assigns a tree
-    /// @param other The tree to assign
-    /// @return The tree
+    /// @brief Assigns a chronTree
+    /// @param other The chronTree to assign
+    /// @return The chronTree
     Tree& operator=(const Tree& other)
     {
       leaf_nodes.clear();
@@ -920,7 +920,7 @@ namespace merkle
       return *this;
     }
 
-    /// @brief Extracts the root hash of the tree
+    /// @brief Extracts the root hash of the chronTree
     /// @return The root hash
     const Hash& root()
     {
@@ -937,9 +937,9 @@ namespace merkle
     /// @brief Extracts a past root hash
     /// @param index The last leaf index to consider
     /// @return The root hash
-    /// @note This extracts the root hash of the tree at a past state, when
-    /// @p index was the last, right-most leaf index in the tree. It is
-    /// equivalent to retracting the tree to @p index and then extracting the
+    /// @note This extracts the root hash of the chronTree at a past state, when
+    /// @p index was the last, right-most leaf index in the chronTree. It is
+    /// equivalent to retracting the chronTree to @p index and then extracting the
     /// root.
     std::shared_ptr<Hash> past_root(size_t index)
     {
@@ -961,7 +961,7 @@ namespace merkle
       return result;
     }
 
-    /// @brief Walks along the path from the root of a tree to a leaf
+    /// @brief Walks along the path from the root of a chronTree to a leaf
     /// @param index The leaf index to walk to
     /// @param update Flag to enable re-computation of node fields (like
     /// subtree size) while walking
@@ -1016,7 +1016,7 @@ namespace merkle
       return cur;
     }
 
-    /// @brief Extracts the path from a leaf index to the root of the tree
+    /// @brief Extracts the path from a leaf index to the root of the chronTree
     /// @param index The leaf index of the path to extract
     /// @return The path
     std::shared_ptr<Path> path(size_t index)
@@ -1037,13 +1037,13 @@ namespace merkle
         leaf_node(index)->hash, index, std::move(elements), max_index());
     }
 
-    /// @brief Extracts a past path from a leaf index to the root of the tree
+    /// @brief Extracts a past path from a leaf index to the root of the chronTree
     /// @param index The leaf index of the path to extract
     /// @param as_of The maximum leaf index to consider
     /// @return The past path
     /// @note This extracts a path at a past state, when @p as_of was the last,
-    /// right-most leaf index in the tree. It is equivalent to retracting the
-    /// tree to @p as_of and then extracting the path of @p index.
+    /// right-most leaf index in the chronTree. It is equivalent to retracting the
+    /// chronTree to @p as_of and then extracting the path of @p index.
     std::shared_ptr<Path> past_path(size_t index, size_t as_of)
     {
       MERKLECPP_TRACE(MERKLECPP_TOUT << "> past_path from " << index
@@ -1059,7 +1059,7 @@ namespace merkle
 
       assert(index < _root->size && as_of < _root->size);
 
-      // Walk down the tree toward `index` and `as_of` from the root. First to
+      // Walk down the chronTree toward `index` and `as_of` from the root. First to
       // the node at which they fork (recorded in `root_to_fork`), then
       // separately to `index` and `as_of`, recording their paths
       // in `fork_to_index` and `fork_to_as_of`.
@@ -1132,7 +1132,7 @@ namespace merkle
           if (cur_a->height == height)
           {
             // The right path does not take into account anything to the right
-            // of `as_of`, as those nodes were inserted into the tree after
+            // of `as_of`, as those nodes were inserted into the chronTree after
             // `as_of`.
             if (go_right_a)
             {
@@ -1180,7 +1180,7 @@ namespace merkle
       if (fork_node)
       {
         // The final hash of the path from the fork to `as_of` needs to be
-        // computed because that path skipped past tree nodes younger than
+        // computed because that path skipped past chronTree nodes younger than
         // `as_of`.
         Hash as_of_hash = cur_a->hash;
         if (!fork_to_as_of.empty())
@@ -1208,7 +1208,7 @@ namespace merkle
         leaf_node(index)->hash, index, std::move(path), as_of);
     }
 
-    /// @brief Serialises the tree
+    /// @brief Serialises the chronTree
     /// @param bytes The vector of bytes to serialise to
     void serialise(std::vector<uint8_t>& bytes)
     {
@@ -1224,7 +1224,7 @@ namespace merkle
 
       if (!empty())
       {
-        // Find conflated/flushed nodes along the left edge of the tree.
+        // Find conflated/flushed nodes along the left edge of the chronTree.
 
         compute_root();
 
@@ -1243,7 +1243,7 @@ namespace merkle
       }
     }
 
-    /// @brief Serialises a segment of the tree
+    /// @brief Serialises a segment of the chronTree
     /// @param from Smalles leaf index to include
     /// @param to Greatest leaf index to include
     /// @param bytes The vector of bytes to serialise to
@@ -1264,7 +1264,7 @@ namespace merkle
 
       if (!empty())
       {
-        // Find nodes to conflate/flush along the left edge of the tree.
+        // Find nodes to conflate/flush along the left edge of the chronTree.
 
         compute_root();
 
@@ -1283,7 +1283,7 @@ namespace merkle
       }
     }
 
-    /// @brief Deserialises a tree
+    /// @brief Deserialises a chronTree
     /// @param bytes The vector of bytes to deserialise from
     void deserialise(const std::vector<uint8_t>& bytes)
     {
@@ -1291,7 +1291,7 @@ namespace merkle
       deserialise(bytes, position);
     }
 
-    /// @brief Deserialises a tree
+    /// @brief Deserialises a chronTree
     /// @param bytes The vector of bytes to deserialise from
     /// @param position Position of the first byte in @p bytes
     void deserialise(const std::vector<uint8_t>& bytes, size_t& position)
@@ -1324,7 +1324,7 @@ namespace merkle
       uint8_t level_no = 0;
       while (it != 0 || level.size() > 1)
       {
-        // Restore extra hashes on the left edge of the tree
+        // Restore extra hashes on the left edge of the chronTree
         if (it & 0x01)
         {
           Hash h(bytes, position);
@@ -1366,7 +1366,7 @@ namespace merkle
       }
     }
 
-    /// @brief Operator to serialise the tree
+    /// @brief Operator to serialise the chronTree
     operator std::vector<uint8_t>() const
     {
       std::vector<uint8_t> bytes;
@@ -1374,7 +1374,7 @@ namespace merkle
       return bytes;
     }
 
-    /// @brief Operator to extract a leaf hash from the tree
+    /// @brief Operator to extract a leaf hash from the chronTree
     /// @param index Leaf index of the leaf to extract
     /// @return The leaf hash
     const Hash& operator[](size_t index) const
@@ -1382,7 +1382,7 @@ namespace merkle
       return leaf(index);
     }
 
-    /// @brief Extract a leaf hash from the tree
+    /// @brief Extract a leaf hash from the chronTree
     /// @param index Leaf index of the leaf to extract
     /// @return The leaf hash
     const Hash& leaf(size_t index) const
@@ -1397,10 +1397,10 @@ namespace merkle
         return leaf_nodes[index - num_flushed]->hash;
     }
 
-    /// @brief Number of leaves in the tree
-    /// @note This is the abstract number of leaves in the tree (including
+    /// @brief Number of leaves in the chronTree
+    /// @note This is the abstract number of leaves in the chronTree (including
     /// flushed leaves), not the number of nodes in memory.
-    /// @return The number of leaves in the tree
+    /// @return The number of leaves in the chronTree
     size_t num_leaves() const
     {
       return num_flushed + leaf_nodes.size() + uninserted_leaf_nodes.size();
@@ -1425,17 +1425,17 @@ namespace merkle
       return n == 0 ? 0 : n - 1;
     }
 
-    /// @brief Indicates whether the tree is empty
-    /// @return Boolean that indicates whether the tree is empty
+    /// @brief Indicates whether the chronTree is empty
+    /// @return Boolean that indicates whether the chronTree is empty
     bool empty() const
     {
       return num_leaves() == 0;
     }
 
-    /// @brief Computes the size of the tree
-    /// @note This is the number of nodes in the tree, including leaves and
+    /// @brief Computes the size of the chronTree
+    /// @note This is the number of nodes in the chronTree, including leaves and
     /// internal nodes.
-    /// @return The size of the tree
+    /// @return The size of the chronTree
     size_t size()
     {
       if (!uninserted_leaf_nodes.empty())
@@ -1444,8 +1444,8 @@ namespace merkle
     }
 
     /// @brief Computes the minumal number of bytes required to serialise the
-    /// tree
-    /// @return The number of bytes required to serialise the tree
+    /// chronTree
+    /// @return The number of bytes required to serialise the chronTree
     size_t serialised_size()
     {
       size_t num_extras = 0;
@@ -1463,10 +1463,10 @@ namespace merkle
         leaf_nodes.size() * sizeof(Hash) + num_extras * sizeof(Hash);
     }
 
-    /// @brief The number of bytes required to serialise a segment of the tree
+    /// @brief The number of bytes required to serialise a segment of the chronTree
     /// @param from The smallest leaf index to include
     /// @param to The greatest leaf index to include
-    /// @return The number of bytes required to serialise the tree segment
+    /// @return The number of bytes required to serialise the chronTree segment
     size_t serialised_size(size_t from, size_t to)
     {
       size_t num_extras = 0;
@@ -1483,28 +1483,28 @@ namespace merkle
     /// @brief Structure to hold statistical information
     mutable struct Statistics
     {
-      /// @brief The number of hashes taken by the tree via hash()
+      /// @brief The number of hashes taken by the chronTree via hash()
       size_t num_hash = 0;
 
-      /// @brief The number of insert() opertations performed on the tree
+      /// @brief The number of insert() opertations performed on the chronTree
       size_t num_insert = 0;
 
-      /// @brief The number of root() opertations performed on the tree
+      /// @brief The number of root() opertations performed on the chronTree
       size_t num_root = 0;
 
-      /// @brief The number of past_root() opertations performed on the tree
+      /// @brief The number of past_root() opertations performed on the chronTree
       size_t num_past_root = 0;
 
-      /// @brief The number of flush_to() opertations performed on the tree
+      /// @brief The number of flush_to() opertations performed on the chronTree
       size_t num_flush = 0;
 
-      /// @brief The number of retract_to() opertations performed on the tree
+      /// @brief The number of retract_to() opertations performed on the chronTree
       size_t num_retract = 0;
 
-      /// @brief The number of paths extracted from the tree via path()
+      /// @brief The number of paths extracted from the chronTree via path()
       size_t num_paths = 0;
 
-      /// @brief The number of past paths extracted from the tree via
+      /// @brief The number of past paths extracted from the chronTree via
       /// past_path()
       size_t num_past_paths = 0;
 
@@ -1522,9 +1522,9 @@ namespace merkle
     /// @brief Statistics
     statistics;
 
-    /// @brief Prints an ASCII representation of the tree to a stream
+    /// @brief Prints an ASCII representation of the chronTree to a stream
     /// @param num_bytes The number of bytes of each node hash to print
-    /// @return A string representing the tree
+    /// @return A string representing the chronTree
     std::string to_string(size_t num_bytes = HASH_SIZE) const
     {
       static const std::string dirty_hash(2 * num_bytes, '?');
@@ -1574,10 +1574,10 @@ namespace merkle
     }
 
   protected:
-    /// @brief Vector of leaf nodes current in the tree
+    /// @brief Vector of leaf nodes current in the chronTree
     std::vector<Node*> leaf_nodes;
 
-    /// @brief Vector of leaf nodes to be inserted in the tree
+    /// @brief Vector of leaf nodes to be inserted in the chronTree
     /// @note These nodes are conceptually inserted, but no Node objects have
     /// been inserted for them yet.
     std::vector<Node*> uninserted_leaf_nodes;
@@ -1585,33 +1585,33 @@ namespace merkle
     /// @brief Number of flushed nodes
     size_t num_flushed = 0;
 
-    /// @brief Current root node of the tree
+    /// @brief Current root node of the chronTree
     Node* _root = nullptr;
 
   private:
     /// @brief The structure of elements on the insertion stack
     typedef struct
     {
-      /// @brief The tree node to insert
+      /// @brief The chronTree node to insert
       Node* n;
       /// @brief Flag to indicate whether @p n should be inserted into the
-      ///  left or the right subtree of the current position in the tree.
+      ///  left or the right subtree of the current position in the chronTree.
       bool left;
     } InsertionStackElement;
 
     /// @brief The insertion stack
     /// @note To avoid actual recursion, this holds the stack/continuation for
-    /// tree node insertion.
+    /// chronTree node insertion.
     mutable std::vector<InsertionStackElement> insertion_stack;
 
     /// @brief The hashing stack
     /// @note To avoid actual recursion, this holds the stack/continuation for
-    /// hashing (parts of the) nodes of a tree.
+    /// hashing (parts of the) nodes of a chronTree.
     mutable std::vector<Node*> hashing_stack;
 
     /// @brief The walk stack
     /// @note To avoid actual recursion, this holds the stack/continuation for
-    /// walking down the tree from the root to a leaf.
+    /// walking down the chronTree from the root to a leaf.
     mutable std::vector<Node*> walk_stack;
 
   protected:
@@ -1628,8 +1628,8 @@ namespace merkle
         return leaf_nodes[index - num_flushed];
     }
 
-    /// @brief Computes the hash of a tree node
-    /// @param n The tree node
+    /// @brief Computes the hash of a chronTree node
+    /// @param n The chronTree node
     /// @param indent Indentation of trace output
     /// @note This recurses down the child nodes to compute intermediate
     /// hashes, if required.
@@ -1670,12 +1670,12 @@ namespace merkle
       }
     }
 
-    /// @brief Computes the root hash of the tree
+    /// @brief Computes the root hash of the chronTree
     void compute_root()
     {
       insert_leaves(true);
       if (num_leaves() == 0)
-        throw std::runtime_error("empty tree does not have a root");
+        throw std::runtime_error("empty chronTree does not have a root");
       assert(_root);
       assert(_root->invariant());
       if (_root->dirty)
@@ -1777,7 +1777,7 @@ namespace merkle
       return result;
     }
 
-    /// @brief Inserts a new leaf into the tree
+    /// @brief Inserts a new leaf into the chronTree
     /// @param root Current root node
     /// @param n New leaf node to insert
     void insert_leaf(Node*& root, Node* n)
@@ -1795,7 +1795,7 @@ namespace merkle
       }
     }
 
-    /// @brief Inserts multiple new leaves into the tree
+    /// @brief Inserts multiple new leaves into the chronTree
     /// @param complete Indicates whether the insertion stack should be
     /// processed to completion after insertion
     void insert_leaves(bool complete = false)
@@ -1817,7 +1817,7 @@ namespace merkle
   };
 
   // clang-format off
-  /// @brief SHA256 compression function for tree node hashes
+  /// @brief SHA256 compression function for chronTree node hashes
   /// @param l Left node hash
   /// @param r Right node hash
   /// @param out Output node hash
@@ -1960,12 +1960,12 @@ namespace merkle
   }
 #endif
 
-  /// @brief Type of hashes in the default tree type
+  /// @brief Type of hashes in the default chronTree type
   typedef HashT<32> Hash;
 
-  /// @brief Type of paths in the default tree type
+  /// @brief Type of paths in the default chronTree type
   typedef PathT<32, sha256_compress> Path;
 
-  /// @brief Default tree with default hash size and function
+  /// @brief Default chronTree with default hash size and function
   typedef TreeT<32, sha256_compress> Tree;
 };

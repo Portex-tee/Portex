@@ -22,8 +22,7 @@ typedef struct mpk_t {
 
 
 typedef struct dk_t {
-    element_t d1, d2, d3;
-
+    element_t d1, d2, d3; // G1, G1, Zr
 } dk_t;
 
 void mpk_init(mpk_t *mpk, pairing_t pairing);
@@ -34,35 +33,40 @@ void dk_init(dk_t *dk, pairing_t pairing);
 
 void dk_clear(dk_t *dk);
 
+void dk_to_bytes(uint8_t *data, dk_t *dk, int size_comp_G1);
+
+void dk_from_bytes(dk_t *dk, uint8_t *data, int size_comp_G1);
+
 int get_bit(int id, int n);
 
 class AibeAlgo {
 public:
+
     // param elements
-    element_t x;
-    element_t g;
+    element_t x; // Zr
+    element_t g; // G2
     mpk_t mpk;
 
     // user elements
-    element_t Hz;
-    element_t t0;
-    element_t theta;
-    element_t R;
-    element_t r;
-    element_t r2; // r''
-    element_t el;
-    element_t er;
+    element_t Hz; // G1
+    element_t t0; // Zr
+    element_t theta; // Zr
+    element_t R; // G1
+    element_t r; // Zr
+    element_t r2; // Zr: r''
+    element_t el; // GT
+    element_t er; // GT
 
     // pkg elements
-    element_t r1; // r'
-    element_t t1;
+    element_t r1; // Zr: r'
+    element_t t1; // Zr
     dk_t dk; // d_ID
     dk_t dk1; // d'_ID
 
     // temp elements
-    element_t tz;
-    element_t tg;
-    element_t te;
+    element_t tz; // Zr
+    element_t tg; // G1
+    element_t te; // GT
 
     pairing_t pairing;
 
@@ -125,6 +129,18 @@ void dk_clear(dk_t *dk) {
     element_clear(dk->d1);
     element_clear(dk->d2);
     element_clear(dk->d3);
+}
+
+void dk_to_bytes(uint8_t *data, dk_t *dk, int size_comp_G1) {
+    element_to_bytes_compressed(data, dk->d1);
+    element_to_bytes_compressed(data + size_comp_G1, dk->d2);
+    element_to_bytes(data + size_comp_G1 * 2, dk->d3);
+}
+
+void dk_from_bytes(dk_t *dk, uint8_t *data, int size_comp_G1) {
+    element_from_bytes_compressed(dk->d1, data);
+    element_from_bytes_compressed(dk->d2, data + size_comp_G1);
+    element_from_bytes(dk->d3, data + size_comp_G1 * 2);
 }
 
 int AibeAlgo::run(FILE *OUTPUT) {

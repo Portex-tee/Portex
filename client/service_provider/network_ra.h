@@ -41,12 +41,16 @@
  */
 typedef enum _ra_msg_type_t
 {
-     TYPE_RA_MSG0,
-     TYPE_RA_MSG1,
-     TYPE_RA_MSG2,
-     TYPE_RA_MSG3,
-     TYPE_RA_ATT_RESULT,
-    TYPE_RA_KEYGEN
+    TYPE_EXIT,
+    TYPE_RA_MSG0,
+    TYPE_RA_MSG1,
+    TYPE_RA_MSG2,
+    TYPE_RA_MSG3,
+    TYPE_RA_ATT_RESULT,
+    TYPE_RA_MSGENC,
+    TYPE_RA_MSGDEC,
+    TYPE_RA_KEYGEN,
+    TYPE_RA_KEYREQ
 }ra_msg_type_t;
 
 /* Enum for all possible message types between the SP and IAS.

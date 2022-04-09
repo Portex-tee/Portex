@@ -89,9 +89,6 @@ uint8_t *msg3_samples[] = {msg3_sample1, msg3_sample2};
 uint8_t *attestation_msg_samples[] =
         {attestation_msg_sample1, attestation_msg_sample2};
 
-extern char sendbuf[BUFSIZ]; //数据传送的缓冲区
-extern char recvbuf[BUFSIZ];
-
 // Some utility functions to output some of the data structures passed between
 // the ISV app and the remote attestation service provider.
 void PRINT_BYTE_ARRAY(
@@ -239,7 +236,7 @@ CLEANUP:
     return ret;
 }
 
-int remote_attestation(sgx_enclave_id_t enclave_id, const char ip[16], int port)
+int remote_attestation(sgx_enclave_id_t enclave_id, NetworkClient &client)
 {
     int ret = 0;
     ra_samp_request_header_t *p_msg0_full = NULL;
@@ -263,12 +260,6 @@ int remote_attestation(sgx_enclave_id_t enclave_id, const char ip[16], int port)
                                        verify_index <= verification_samples)
 #define GET_VERIFICATION_ARRAY_INDEX() (verify_index - 1)
 
-    // SOCKET: connect to server
-    if (client(ip, port) != 0)
-    {
-        fprintf(OUTPUT, "Connect Server Error, Exit!\n");
-        return -1;
-    }
     // Preparation for remote attestation by configuring extended epid group id.
     {
         uint32_t extended_epid_group_id = 0;
@@ -306,7 +297,8 @@ int remote_attestation(sgx_enclave_id_t enclave_id, const char ip[16], int port)
         // SOCKET: send & recv
         ret = ra_network_send_receive("http://SampleServiceProvider.intel.com/",
                                       p_msg0_full,
-                                      &p_msg0_resp_full);
+                                      &p_msg0_resp_full,
+                                      client);
         if (ret != 0)
         {
             fprintf(OUTPUT, "\nError, ra_network_send_receive for msg0 failed "
@@ -397,7 +389,8 @@ int remote_attestation(sgx_enclave_id_t enclave_id, const char ip[16], int port)
         }
         ret = ra_network_send_receive("http://SampleServiceProvider.intel.com/",
                                       p_msg1_full,
-                                      &p_msg2_full);
+                                      &p_msg2_full,
+                                      client);
 
         if ((ret == 0) || (p_msg2_full == NULL))
         {
@@ -584,7 +577,8 @@ int remote_attestation(sgx_enclave_id_t enclave_id, const char ip[16], int port)
         memset(p_msg2_full, 0, 180);
         ret = ra_network_send_receive("http://SampleServiceProvider.intel.com/",
                                       p_msg3_full,
-                                      &p_att_result_msg_full);
+                                      &p_att_result_msg_full,
+                                      client);
         if (ret == 0 || p_att_result_msg_full == NULL)
         {
             ret = -1;
@@ -766,6 +760,16 @@ int remote_attestation(sgx_enclave_id_t enclave_id, const char ip[16], int port)
     return ret;
 }
 
+void terminate(NetworkClient client) {
 
+    ra_samp_request_header_t p_request;
+    p_request.size = 0;
+    p_request.type = TYPE_EXIT;
+
+
+    memset(client.sendbuf, 0, BUFSIZ);
+    memcpy_s(client.sendbuf, BUFSIZ, &p_request, sizeof(ra_samp_request_header_t));
+    client.SendTo(sizeof(ra_samp_request_header_t) + p_request.size);
+}
 
 #endif //CLIENT_RA_H

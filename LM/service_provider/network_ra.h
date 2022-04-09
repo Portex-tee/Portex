@@ -33,7 +33,12 @@
 
 #ifndef _NETWORK_RA_H
 #define _NETWORK_RA_H
-
+#include <cstdio>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 
 /* Enum for all possible message types between the ISV app and
  * the ISV SP. Requests and responses in the remote attestation
@@ -41,14 +46,16 @@
  */
 typedef enum _ra_msg_type_t
 {
-     TYPE_RA_MSG0,
-     TYPE_RA_MSG1,
-     TYPE_RA_MSG2,
-     TYPE_RA_MSG3,
-     TYPE_RA_ATT_RESULT,
-     TYPE_RA_MSGENC,
-     TYPE_RA_MSGDEC,
-     TYPE_RA_MSGSETKEY
+    TYPE_EXIT,
+    TYPE_RA_MSG0,
+    TYPE_RA_MSG1,
+    TYPE_RA_MSG2,
+    TYPE_RA_MSG3,
+    TYPE_RA_ATT_RESULT,
+    TYPE_RA_MSGENC,
+    TYPE_RA_MSGDEC,
+    TYPE_RA_KEYGEN,
+    TYPE_RA_KEYREQ
 }ra_msg_type_t;
 
 /* Enum for all possible message types between the SP and IAS.
@@ -57,11 +64,11 @@ typedef enum _ra_msg_type_t
  */
 typedef enum _ias_msg_type_t
 {
-     TYPE_IAS_ENROLL,
-     TYPE_IAS_GET_SIGRL,
-     TYPE_IAS_SIGRL,
-     TYPE_IAS_ATT_EVIDENCE,
-     TYPE_IAS_ATT_RESULT,
+    TYPE_IAS_ENROLL,
+    TYPE_IAS_GET_SIGRL,
+    TYPE_IAS_SIGRL,
+    TYPE_IAS_ATT_EVIDENCE,
+    TYPE_IAS_ATT_RESULT,
 }ias_msg_type_t;
 
 #pragma pack(1)
@@ -86,15 +93,37 @@ typedef struct _ra_samp_response_header_t{
 extern "C" {
 #endif
 
+class NetworkEnd {
+public:
+    char sendbuf[BUFSIZ];  //数据传送的缓冲区
+    char recvbuf[BUFSIZ];
+    int  sockfd;//套接字
+    int  client_sockfd;
+
+    int SendTo(int len);
+    int RecvFrom();
+    int Cleanupsocket();
+};
+
+class NetworkClient : public NetworkEnd{
+public:
+    int client(const char ip[16],int port);
+};
+
+class NetworkServer : public NetworkEnd{
+public:
+    sockaddr_in my_addr;   //服务器网络地址结构体
+    sockaddr_in remote_addr; //客户端网络地址结构体
+    int server(int port);
+    int accept_client();
+};
+
+
 int ra_network_send_receive(const char *server_url,
                             const ra_samp_request_header_t *req,
-                            ra_samp_response_header_t **p_resp);
+                            ra_samp_response_header_t **p_resp,
+                            NetworkEnd &network);
 void ra_free_network_response_buffer(ra_samp_response_header_t *resp);
-
-int server(int port);
-int SendToClient(int len);
-int RecvfromCient();
-int Cleanupsocket();
 
 
 #ifdef  __cplusplus
