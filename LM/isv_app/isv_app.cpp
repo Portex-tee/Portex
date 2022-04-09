@@ -97,6 +97,13 @@ int main(int argc, char *argv[])
     sgx_enclave_id_t enclave_id = 0;
     FILE *OUTPUT = stdout;
     NetworkClient client;
+    LogTree logTree;
+    Proofs proofs;
+
+    // Merkle test
+    std::string srcStr = "message", encodedHexStr;
+
+
 
     int launch_token_update = 0;
     sgx_launch_token_t launch_token = {0};
@@ -117,6 +124,14 @@ int main(int argc, char *argv[])
         fprintf(OUTPUT, "\nCall sgx_create_enclave success.");
     }
 
+    {
+        // todo: serialise and send
+        sha256(srcStr, encodedHexStr);
+        ChronTreeT::Hash hash(encodedHexStr);
+        logTree.append(hash, proofs);
+        assert(proofs.path->verify(proofs.root));
+        std::cout << "verify succeed" << std::endl;
+    }
 
     // SOCKET: connect to server
     if (client.client("127.0.0.1", 12333) != 0)
@@ -125,7 +140,6 @@ int main(int argc, char *argv[])
         ret = -1;
         goto CLEANUP;
     }
-    // SOCKET: connect to server
     if (remote_attestation(enclave_id, client) != SGX_SUCCESS)
     {
         fprintf(OUTPUT, "Remote Attestation Error, Exit!\n");

@@ -46,7 +46,6 @@
  */
 typedef enum _ra_msg_type_t
 {
-    TYPE_EXIT,
     TYPE_RA_MSG0,
     TYPE_RA_MSG1,
     TYPE_RA_MSG2,
@@ -54,6 +53,7 @@ typedef enum _ra_msg_type_t
     TYPE_RA_ATT_RESULT,
     TYPE_RA_MSGENC,
     TYPE_RA_MSGDEC,
+    TYPE_EXIT,
     TYPE_RA_KEYGEN,
     TYPE_RA_KEYREQ
 }ra_msg_type_t;

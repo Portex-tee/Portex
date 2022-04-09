@@ -47,7 +47,7 @@ class LogTree {
 public:
     ChronTreeT chronTree;
 
-    int append(ChronTreeT::Hash hash, Proofs *prf);
+    int append(ChronTreeT::Hash hash, Proofs &prf);
 
     int merkle_test(){
         std::string srcStr = "message", encodedHexStr;
@@ -68,12 +68,12 @@ public:
 };
 
 
-int LogTree::append(ChronTreeT::Hash hash, Proofs *prf) {
+int LogTree::append(ChronTreeT::Hash hash, Proofs &prf) {
     int ret = 0;
-    prf->node = hash;
+    prf.node = hash;
     chronTree.insert(hash);
-    prf->root = chronTree.root();
-    prf->path = chronTree.path(0);
+    prf.root = chronTree.root();
+    prf.path = chronTree.path(0);
     return ret;
 }
 

@@ -81,11 +81,8 @@
 
 #define ENCLAVE_PATH "isv_enclave.signed.so"
 
-extern char sendbuf[BUFSIZ]; //数据传送的缓冲区
-extern char recvbuf[BUFSIZ];
 
-
-int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT) {
+int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT, NetworkClient client) {
     int ret = 0;
     sgx_status_t status = SGX_SUCCESS;
     ra_samp_request_header_t *p_request = NULL;
@@ -127,15 +124,15 @@ int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *
         goto CLEANUP;
     }
 
-    memset(sendbuf, 0, BUFSIZ);
-    memcpy_s(sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + msg_size);
-    SendToServer(sizeof(ra_samp_request_header_t) + p_request->size);
+    memset(client.sendbuf, 0, BUFSIZ);
+    memcpy_s(client.sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + msg_size);
+    client.SendTo(sizeof(ra_samp_request_header_t) + p_request->size);
 
     // keygen 3
-    recvlen = RecvfromServer();
-    p_response = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) recvbuf)->size);
+    recvlen = client.RecvFrom();
+    p_response = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
 
-    if (memcpy_s(p_response, recvlen, recvbuf, recvlen)) {
+    if (memcpy_s(p_response, recvlen, client.recvbuf, recvlen)) {
         fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
                 __FUNCTION__, __LINE__);
         ret = -1;
@@ -196,6 +193,7 @@ int main(int argc, char *argv[])
     sgx_enclave_id_t enclave_id = 0;
     AibeAlgo aibeAlgo;
     FILE *OUTPUT = stdout;
+    NetworkClient client;
 
 
     //aibe load_param
@@ -236,10 +234,17 @@ int main(int argc, char *argv[])
     fprintf(OUTPUT, "\nA-IBE Success Init ");
 
     // SOCKET: connect to server
-    if (remote_attestation(enclave_id, "127.0.0.1", 12333) != SGX_SUCCESS)
+    if (client.client("127.0.0.1", 12333) != 0)
+    {
+        fprintf(OUTPUT, "Connect Server Error, Exit!\n");
+        ret = -1;
+        goto CLEANUP;
+    }
+    if (remote_attestation(enclave_id, client) != SGX_SUCCESS)
     {
         fprintf(OUTPUT, "Remote Attestation Error, Exit!\n");
-        return -1;
+        ret = -1;
+        goto CLEANUP;
     }
 
 
@@ -264,14 +269,15 @@ int main(int argc, char *argv[])
     puts("\nPKG: setup finished");
 
 ////    aibe: keygen
-    if (client_keygen(ID, aibeAlgo, enclave_id, OUTPUT)) {
+    if (client_keygen(ID, aibeAlgo, enclave_id, OUTPUT, client)) {
         fprintf(stderr, "\nKey verify failed");
         goto CLEANUP;
     }
     fprintf(OUTPUT, "\nA-IBE Success Keygen ");
 
 CLEANUP:
-    Cleanupsocket();
+    terminate(client);
+    client.Cleanupsocket();
     sgx_destroy_enclave(enclave_id);
 
     aibeAlgo.clear();

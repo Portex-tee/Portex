@@ -38,37 +38,10 @@
 #include "service_provider.h"
 //add
 #include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h> 
- 
-char sendbuf[BUFSIZ];  //数据传送的缓冲区
-char recvbuf[BUFSIZ];
-int  client_sockfd;//客户端套接字
 
 
-
-void PRINT_BYTE_ARRAY(
-    FILE *file, void *mem, uint32_t len)
-{
-    if(!mem || !len)
-    {
-        fprintf(file, "\n( null )\n");
-        return;
-    }
-    uint8_t *array = (uint8_t *)mem;
-    fprintf(file, "%u bytes:\n{\n", len);
-    uint32_t i = 0;
-    for(i = 0; i < len - 1; i++)
-    {
-        fprintf(file, "0x%x, ", array[i]);
-        if(i % 8 == 7) fprintf(file, "\n");
-    }
-    fprintf(file, "0x%x ", array[i]);
-    fprintf(file, "\n}\n");
-}
+extern void PRINT_BYTE_ARRAY(
+        FILE *file, void *mem, uint32_t len);
 // Used to send requests to the service provider sample.  It
 // simulates network communication between the ISV app and the
 // ISV service provider.  This would be modified in a real
@@ -81,110 +54,61 @@ void PRINT_BYTE_ARRAY(
 // @return int
 // 修改成真正的网络通讯
 int ra_network_send_receive(const char *server_url,
-    const ra_samp_request_header_t *p_req,
-    ra_samp_response_header_t **p_resp)
-{
-    FILE* OUTPUT = stdout;
+                            const ra_samp_request_header_t *p_req,
+                            ra_samp_response_header_t **p_resp,
+                            NetworkEnd &network) {
+    FILE *OUTPUT = stdout;
     int ret = 0;
     int len = 0;
     int msg2len = 0;
 
-    if((NULL == server_url) ||
+    if ((NULL == server_url) ||
         (NULL == p_req) ||
-        (NULL == p_resp))
-    {
+        (NULL == p_resp)) {
         return -1;
     }
-    switch(p_req->type)
-    {
+    switch (p_req->type) {
 
-    case TYPE_RA_MSG0:
-        memset(sendbuf, 0, BUFSIZ);
-        memcpy_s(sendbuf, BUFSIZ, p_req, sizeof(ra_samp_request_header_t)+p_req->size);
-        len = SendToServer(sizeof(ra_samp_request_header_t)+p_req->size);
-        sleep(1);//等待起作用
-        if (0 == len)
-        {
-            fprintf(stderr, "\nError,Send MSG0 fail [%s].",
-                __FUNCTION__);
-        }
-        break;
+        case TYPE_RA_MSG0:
+            memset(network.sendbuf, 0, BUFSIZ);
+            memcpy_s(network.sendbuf, BUFSIZ, p_req, sizeof(ra_samp_request_header_t) + p_req->size);
+            len = network.SendTo(sizeof(ra_samp_request_header_t) + p_req->size);
+            sleep(1);//等待起作用
+            if (0 == len) {
+                fprintf(stderr, "\nError,Send MSG0 fail [%s].",
+                        __FUNCTION__);
+            }
+            break;
 
-    case TYPE_RA_MSG1:
-        memset(sendbuf, 0, BUFSIZ);
-        memcpy_s(sendbuf, BUFSIZ, p_req, sizeof(ra_samp_request_header_t)+p_req->size);
-        ret = SendToServer(sizeof(ra_samp_request_header_t)+p_req->size);
-        fprintf(stdout, "\nSend MSG1 To Server [%s].",__FUNCTION__);
-        ret = RecvfromServer();
-        msg2len = sizeof(ra_samp_response_header_t)+sizeof(sample_ra_msg2_t);
-        
-        memcpy_s(*p_resp, msg2len, recvbuf, ret);
-        break;
+        case TYPE_RA_MSG1:
+            memset(network.sendbuf, 0, BUFSIZ);
+            memcpy_s(network.sendbuf, BUFSIZ, p_req, sizeof(ra_samp_request_header_t) + p_req->size);
+            ret = network.SendTo(sizeof(ra_samp_request_header_t) + p_req->size);
+            fprintf(stdout, "\nSend MSG1 To Server [%s].", __FUNCTION__);
+            ret = network.RecvFrom();
+            msg2len = sizeof(ra_samp_response_header_t) + sizeof(sample_ra_msg2_t);
 
-    case TYPE_RA_MSG3:
-        memset(sendbuf, 0, BUFSIZ);
-        memcpy_s(sendbuf, BUFSIZ, p_req, sizeof(ra_samp_request_header_t)+p_req->size);
-        ret = SendToServer(sizeof(ra_samp_request_header_t)+p_req->size);
-        ret = RecvfromServer();
-        memcpy_s(*p_resp, ret, recvbuf, ret);
-        fprintf(stderr, "\nMsg3 ret = %d [%s].", ret);
-        PRINT_BYTE_ARRAY(OUTPUT, *p_resp, ret);
-        break;
+            memcpy_s(*p_resp, msg2len, network.recvbuf, ret);
+            break;
 
-    default:
-        ret = -1;
-        fprintf(stderr, "\nError, unknown ra message type. Type = %d [%s].",
-            p_req->type, __FUNCTION__);
-        break;
+        case TYPE_RA_MSG3:
+            memset(network.sendbuf, 0, BUFSIZ);
+            memcpy_s(network.sendbuf, BUFSIZ, p_req, sizeof(ra_samp_request_header_t) + p_req->size);
+            ret = network.SendTo(sizeof(ra_samp_request_header_t) + p_req->size);
+            ret = network.RecvFrom();
+            memcpy_s(*p_resp, ret, network.recvbuf, ret);
+            fprintf(stderr, "\nMsg3 ret = %d [%s].", ret);
+            PRINT_BYTE_ARRAY(OUTPUT, *p_resp, ret);
+            break;
+
+        default:
+            ret = -1;
+            fprintf(stderr, "\nError, unknown ra message type. Type = %d [%s].",
+                    p_req->type, __FUNCTION__);
+            break;
     }
 
     return ret;
-}
-int client(const char ip[16],int port)
-{
-    int len;
-    struct sockaddr_in remote_addr; //服务器端网络地址结构体
-    memset(&remote_addr,0,sizeof(remote_addr)); //数据初始化--清零
-    remote_addr.sin_family=AF_INET; //设置为IP通信
-    remote_addr.sin_addr.s_addr=inet_addr(ip);//服务器IP地址
-    remote_addr.sin_port=htons(port); //服务器端口号
-
-    /*创建客户端套接字--IPv4协议，面向连接通信，TCP协议*/
-    if((client_sockfd=socket(AF_INET,SOCK_STREAM,0))<0)
-    {
-        perror("socket");
-        return 1;
-    }
-
-    /*将套接字绑定到服务器的网络地址上*/
-    if(connect(client_sockfd,(struct sockaddr *)&remote_addr,sizeof(struct sockaddr))<0)
-    {
-        perror("connect");
-        return 1;
-    }
-    printf("connected to server\n");
-    return 0;
-}
-
-int SendToServer(int len)
-{
-    len=send(client_sockfd, sendbuf, len, 0);//发送
-}
-
-int RecvfromServer()
-{
-    /*接收服务端的数据*/
-    int len = 0;
-    len=recv(client_sockfd,recvbuf,BUFSIZ,0);
-    if (len > 0 )
-        recvbuf[len] = 0;
-    return len;
-}
-
-int Cleanupsocket()
-{
-    close(client_sockfd);
-    return 0;
 }
 
 // Used to free the response messages.  In the sample code, the
@@ -193,10 +117,103 @@ int Cleanupsocket()
 //
 // @param resp Pointer to the response buffer to be freed.
 
-void ra_free_network_response_buffer(ra_samp_response_header_t *resp)
-{
-    if(resp!=NULL)
-    {
+void ra_free_network_response_buffer(ra_samp_response_header_t *resp) {
+    if (resp != NULL) {
         free(resp);
     }
+}
+
+int NetworkClient::client(const char *ip, int port) {
+    int len;
+    struct sockaddr_in remote_addr; //服务器端网络地址结构体
+    memset(&remote_addr, 0, sizeof(remote_addr)); //数据初始化--清零
+    remote_addr.sin_family = AF_INET; //设置为IP通信
+    remote_addr.sin_addr.s_addr = inet_addr(ip);//服务器IP地址
+    remote_addr.sin_port = htons(port); //服务器端口号
+
+    /*创建客户端套接字--IPv4协议，面向连接通信，TCP协议*/
+    if ((client_sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        perror("socket");
+        return 1;
+    }
+
+    /*将套接字绑定到服务器的网络地址上*/
+    if (connect(client_sockfd, (struct sockaddr *) &remote_addr, sizeof(struct sockaddr)) < 0) {
+        perror("connect");
+        return 1;
+    }
+    printf("connected to server\n");
+    return 0;
+}
+
+int NetworkEnd::SendTo(int len) {
+    len = send(client_sockfd, sendbuf, len, 0);//发送
+}
+
+int NetworkEnd::RecvFrom() {
+    /*接收服务端的数据*/
+    int len = 0;
+    len = recv(client_sockfd, recvbuf, BUFSIZ, 0);
+    if (len > 0)
+        recvbuf[len] = 0;
+    return len;
+}
+
+int NetworkEnd::Cleanupsocket() {
+    close(sockfd);
+    return 0;
+}
+
+int NetworkServer::server(int port) {
+    FILE *OUTPUT = stdout;
+    int len;
+    socklen_t sin_size;
+    sin_size = sizeof(struct sockaddr_in);
+
+    memset(&my_addr, 0, sizeof(my_addr)); //数据初始化--清零
+    my_addr.sin_family = AF_INET; //设置为IP通信
+    my_addr.sin_addr.s_addr = INADDR_ANY;//服务器IP地址--允许连接到所有本地地址上
+    my_addr.sin_port = htons(port); //服务器端口号
+
+    /*创建服务器端套接字--IPv4协议，面向连接通信，TCP协议*/
+    if ((sockfd = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
+        perror("socket");
+        return 1;
+    }
+
+    /*将套接字绑定到服务器的网络地址上*/
+    if (bind(sockfd, (struct sockaddr *) &my_addr, sizeof(struct sockaddr)) < 0) {
+        perror("bind");
+        return 1;
+    }
+
+    /*监听连接请求--监听队列长度为5*/
+    fprintf(OUTPUT, "\nlistening...");
+    listen(sockfd, 5);
+
+    sin_size = sizeof(struct sockaddr_in);
+
+    /*等待客户端连接请求到达*/
+    if ((client_sockfd = accept(sockfd, (struct sockaddr *) &remote_addr, &sin_size)) < 0) {
+        perror("accept");
+        return 1;
+    }
+    fprintf(OUTPUT, "\naccepted\n");
+
+    return 0;
+}
+
+int NetworkServer::accept_client() {
+    FILE *OUTPUT = stdout;
+    socklen_t sin_size;
+    sin_size = sizeof(struct sockaddr_in);
+
+    close(client_sockfd);
+    /*等待客户端连接请求到达*/
+    if ((client_sockfd = accept(sockfd, (struct sockaddr *) &remote_addr, &sin_size)) < 0) {
+        perror("accept");
+        return 1;
+    }
+    fprintf(OUTPUT, "\naccepted\n");
+    return 0;
 }
