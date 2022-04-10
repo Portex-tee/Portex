@@ -209,6 +209,8 @@ int NetworkServer::accept_client() {
     sin_size = sizeof(struct sockaddr_in);
 
     close(client_sockfd);
+
+    fprintf(OUTPUT, "\nlistening...");
     /*等待客户端连接请求到达*/
     if ((client_sockfd = accept(sockfd, (struct sockaddr *) &remote_addr, &sin_size)) < 0) {
         perror("accept");

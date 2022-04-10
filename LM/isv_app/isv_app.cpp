@@ -91,6 +91,68 @@ extern char recvbuf[BUFSIZ];
 // these scenarios.
 #define _T(x) x
 
+int lm_keyreq(const std::string& srcStr, LogTree logTree, sgx_enclave_id_t enclave_id, FILE *OUTPUT, NetworkClient client) {
+
+    int ret = 0;
+    uint8_t data[BUFSIZ];
+    Proofs proofs;
+    std::string encodedHexStr;
+    log_header_t log_header;
+    ra_samp_request_header_t *p_request = NULL;
+    ra_samp_response_header_t *p_response = NULL;
+    int data_size, msg_size, recvlen;
+
+    sha256(srcStr, encodedHexStr);
+    ChronTreeT::Hash hash(encodedHexStr);
+    logTree.append(hash, proofs);
+
+    msg_size = proofs.serialise(data, &log_header);
+    p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);
+    p_request->type = TYPE_RA_KEYREQ;
+    p_request->size = msg_size;
+
+    // todo: encrypt/decrypt
+    memcpy_s(p_request->body, msg_size, data, msg_size);
+
+    if (memcpy_s(p_request->body, msg_size, data, msg_size)) {
+        fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
+                __FUNCTION__, __LINE__);
+        ret = -1;
+        goto CLEANUP;
+    }
+
+    memset(client.sendbuf, 0, BUFSIZ);
+    memcpy_s(client.sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + msg_size);
+    client.SendTo(sizeof(ra_samp_request_header_t) + p_request->size);
+
+    recvlen = client.RecvFrom();
+    p_response = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
+
+    if (memcpy_s(p_response, recvlen, client.recvbuf, recvlen)) {
+        fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
+                __FUNCTION__, __LINE__);
+        ret = -1;
+        goto CLEANUP;
+    }
+    if ((p_response->type != TYPE_RA_KEYREQ)) {
+        fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
+                __FUNCTION__, __LINE__);
+        ret = -1;
+        goto CLEANUP;
+    }
+
+
+    data_size = p_response->size - SGX_AESGCM_MAC_SIZE;
+    memcpy_s(data, data_size, p_response->body, data_size);
+
+//    assert(proofs.path->verify(proofs.root));
+    std::cout << "verify succeed" << std::endl;
+
+    CLEANUP:
+    SAFE_FREE(p_request);
+    return ret;
+}
+
 int main(int argc, char *argv[])
 {
     int ret = 0;
@@ -98,12 +160,6 @@ int main(int argc, char *argv[])
     FILE *OUTPUT = stdout;
     NetworkClient client;
     LogTree logTree;
-    Proofs proofs;
-
-    // Merkle test
-    std::string srcStr = "message", encodedHexStr;
-
-
 
     int launch_token_update = 0;
     sgx_launch_token_t launch_token = {0};
@@ -124,14 +180,6 @@ int main(int argc, char *argv[])
         fprintf(OUTPUT, "\nCall sgx_create_enclave success.");
     }
 
-    {
-        // todo: serialise and send
-        sha256(srcStr, encodedHexStr);
-        ChronTreeT::Hash hash(encodedHexStr);
-        logTree.append(hash, proofs);
-        assert(proofs.path->verify(proofs.root));
-        std::cout << "verify succeed" << std::endl;
-    }
 
     // SOCKET: connect to server
     if (client.client("127.0.0.1", 12333) != 0)

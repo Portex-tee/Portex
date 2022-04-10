@@ -12,6 +12,11 @@
 
 typedef merkle::TreeT<32, merkle::sha256_openssl> ChronTreeT;
 
+
+typedef struct _log_header_t{
+    uint32_t size[3];
+}log_header_t;
+
 void sha256(const std::string &srcStr, std::string &encodedHexStr)
 {
     unsigned char mdStr[33] = { 0 };
@@ -40,7 +45,62 @@ public:
         }
         return true;
     }
+
+    int serialise(uint8_t *bytes, log_header_t *header);
+
+    int deserialise(uint8_t *bytes, log_header_t *header);
 };
+
+int Proofs::serialise(uint8_t *bytes, log_header_t *header) {
+    int size = 0;
+    std::vector<uint8_t> vec;
+
+    // node
+    node.serialise(vec);
+    std::copy(vec.begin(), vec.end(), bytes + size);
+    header->size[0] = node.serialised_size();
+    size += header->size[0];
+
+    // root
+    root.serialise(vec);
+    std::copy(vec.begin(), vec.end(), bytes + size);
+    header->size[1] = root.serialised_size();
+    size += header->size[1];
+
+    // path
+    path->serialise(vec);
+    std::copy(vec.begin(), vec.end(), bytes + size);
+    header->size[2] = path->serialised_size();
+    size += header->size[2];
+
+    return size;
+}
+
+int Proofs::deserialise(uint8_t *bytes, log_header_t *header) {
+
+    int size = 0, len;
+    std::vector<uint8_t> vec;
+
+    // node
+    len = header->size[0];
+    vec.assign(bytes + size, bytes + size + len);
+    node.deserialise(vec);
+    size += header->size[0];
+
+    // root
+    len = header->size[1];
+    vec.assign(bytes + size, bytes + size + len);
+    root.deserialise(vec);
+    size += header->size[1];
+
+    // path
+    len = header->size[2];
+    vec.assign(bytes + size, bytes + size + len);
+    path->deserialise(vec);
+    size += header->size[2];
+
+    return size;
+}
 
 
 class LogTree {
