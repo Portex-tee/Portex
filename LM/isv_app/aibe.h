@@ -160,7 +160,6 @@ int AibeAlgo::run(FILE *OUTPUT) {
 ////    element init
     init();
 
-////    todo: server aibe load_param
     mpk_load();
     msk_load();
 
@@ -171,7 +170,6 @@ int AibeAlgo::run(FILE *OUTPUT) {
     keygen1(ID);
     fprintf(OUTPUT, "\nA-IBE Success Keygen1 ");
 
-////    todo: server aibe keygen2
     keygen2();
     puts("\nPKG: keygen2 finished");
 
@@ -182,7 +180,6 @@ int AibeAlgo::run(FILE *OUTPUT) {
     }
 
     fprintf(OUTPUT, "\nA-IBE Success Keygen3 ");
-    //todo: aibe clear
 
 ////    element clear
     CLEANUP:

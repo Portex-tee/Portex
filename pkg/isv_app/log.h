@@ -89,6 +89,7 @@ int Proofs::deserialise(uint8_t *bytes) {
 
     len = sizeof(log_header_t);
     memcpy(&header, bytes, len);
+
     size += len;
 
     // node
@@ -109,7 +110,8 @@ int Proofs::deserialise(uint8_t *bytes) {
     len = header.size[2];
     vec.clear();
     vec.assign(bytes + size, bytes + size + len);
-    path = std::make_shared<ChronTreeT::Path>(vec);
+//    path = std::make_shared<ChronTreeT::Path>(vec);
+//    printf("\ndeserialize path: vec size %ld, len %d\n", vec.size(), len);
     size += len;
 
     return size;

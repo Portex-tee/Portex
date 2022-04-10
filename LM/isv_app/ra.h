@@ -756,7 +756,7 @@ int remote_attestation(sgx_enclave_id_t enclave_id, NetworkClient &client)
     SAFE_FREE(p_msg3_full);
     SAFE_FREE(p_msg1_full);
     SAFE_FREE(p_msg0_full);
-    printf("\nExit ...\n");
+    printf("\nRA Exit ...\n");
     return ret;
 }
 

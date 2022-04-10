@@ -228,9 +228,6 @@ int main(int argc, char *argv[])
         fprintf(OUTPUT, "\nCall sgx_create_enclave success.");
     }
 
-
-    // todo: mpk load_param
-
     fprintf(OUTPUT, "\nA-IBE Success Init ");
 
     // SOCKET: connect to server
@@ -263,7 +260,6 @@ int main(int argc, char *argv[])
 ////    element init
     aibeAlgo.init();
 
-////    todo: server aibe load_param
     aibeAlgo.mpk_load();
 
     puts("\nPKG: setup finished");

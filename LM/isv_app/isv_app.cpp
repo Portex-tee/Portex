@@ -97,7 +97,6 @@ int lm_keyreq(const std::string& srcStr, LogTree logTree, sgx_enclave_id_t encla
     uint8_t data[BUFSIZ];
     Proofs proofs;
     std::string encodedHexStr;
-    log_header_t log_header;
     ra_samp_request_header_t *p_request = NULL;
     ra_samp_response_header_t *p_response = NULL;
     int data_size, msg_size, recvlen;
@@ -106,7 +105,7 @@ int lm_keyreq(const std::string& srcStr, LogTree logTree, sgx_enclave_id_t encla
     ChronTreeT::Hash hash(encodedHexStr);
     logTree.append(hash, proofs);
 
-    msg_size = proofs.serialise(data, &log_header);
+    msg_size = proofs.serialise(data);
     p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);
     p_request->type = TYPE_RA_KEYREQ;
     p_request->size = msg_size;
@@ -135,18 +134,18 @@ int lm_keyreq(const std::string& srcStr, LogTree logTree, sgx_enclave_id_t encla
         goto CLEANUP;
     }
     if ((p_response->type != TYPE_RA_KEYREQ)) {
-        fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
+        fprintf(OUTPUT, "\nError: INTERNAL ERROR - response type unmatched in [%s]-[%d].",
                 __FUNCTION__, __LINE__);
         ret = -1;
         goto CLEANUP;
     }
 
 
-    data_size = p_response->size - SGX_AESGCM_MAC_SIZE;
+    data_size = p_response->size;
     memcpy_s(data, data_size, p_response->body, data_size);
 
 //    assert(proofs.path->verify(proofs.root));
-    std::cout << "verify succeed" << std::endl;
+    std::cout << "certificate received" << std::endl;
 
     CLEANUP:
     SAFE_FREE(p_request);
@@ -194,6 +193,8 @@ int main(int argc, char *argv[])
         ret = -1;
         goto CLEANUP;
     }
+
+    lm_keyreq("message", logTree, enclave_id, OUTPUT, client);
 
 
 //    aibeAlgo.run(OUTPUT);

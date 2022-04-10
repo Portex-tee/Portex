@@ -10,7 +10,7 @@ How to Build/Execute the Sample Code
 ------------------------------------
 1. Install Intel(R) Software Guard Extensions (Intel(R) SGX) SDK for Linux* OS
 2. Make sure your environment is set:
-    $ source ${sgx-sdk-install-path}/environment
+    $ source ${sgx-sdk-install-pathPtr}/environment
 3. Build the project with the prepared Makefile:
     a. Hardware Mode, Debug build:
         $ make

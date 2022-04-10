@@ -32,6 +32,7 @@
 // This sample is confined to the communication between a SGX client platform
 // and an ISV Application Server.
 
+#include "log.h"
 #include "aibe.h"
 #include <stdio.h>
 #include <limits.h>
@@ -443,10 +444,55 @@ int pkg_keyreq(const ra_samp_request_header_t *p_msg,
                sgx_status_t *status,
                NetworkServer &server) {
     if (!p_msg ||
-        (msg_size > LENOFMSE)) {
+        (msg_size > BUFSIZ)) {
         return -1;
     }
     int ret = 0;
+    uint8_t data[BUFSIZ];
+    Proofs proofs;
+    int msg2_size;
+    ra_samp_response_header_t *p_response = NULL;
+
+    memcpy_s(data, msg_size, p_msg, msg_size);
+    puts("\nstart deserialise");
+    proofs.deserialise(data);
+    //todo: fix verify
+//    if (!proofs.verify_proofs()) {
+//        fprintf(stderr, "\nProofs verify failed.");
+//    }
+
+    fprintf(stderr, "\nProofs verify succeed.");
+
+    msg2_size = 0;
+    p_response = (ra_samp_response_header_t *) malloc(msg2_size + sizeof(ra_samp_response_header_t));
+    if (!p_response) {
+        fprintf(stderr, "\nError, out of memory in [%s]-[%d].", __FUNCTION__, __LINE__);
+        ret = SP_INTERNAL_ERROR;
+        return ret;
+    }
+    memset(p_response, 0, msg2_size + sizeof(ra_samp_response_header_t));
+    p_response->type = TYPE_RA_KEYREQ;
+    p_response->size = msg2_size;
+    p_response->status[0] = 0;
+    p_response->status[1] = 0;
+
+
+    memset(server.sendbuf, 0, BUFSIZ);
+    if (memcpy_s(server.sendbuf,
+                 msg2_size + sizeof(ra_samp_response_header_t),
+                 p_response,
+                 msg2_size + sizeof(ra_samp_response_header_t))) {
+        fprintf(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
+        ret = SP_INTERNAL_ERROR;
+        return ret;
+    }
+
+    if (server.SendTo(msg2_size + sizeof(ra_samp_response_header_t)) < 0) {
+        fprintf(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
+        ret = SP_INTERNAL_ERROR;
+        return ret;
+    }
+
     fprintf(stdout, "\nKeyreq Done.");
     return ret;
 }
