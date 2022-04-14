@@ -91,7 +91,14 @@ extern char recvbuf[BUFSIZ];
 // these scenarios.
 #define _T(x) x
 
-int lm_keyreq(const std::string& srcStr, LogTree logTree, sgx_enclave_id_t enclave_id, FILE *OUTPUT, NetworkClient client) {
+
+int lm_keyreq(const ra_samp_request_header_t *p_msg,
+              uint32_t msg_size,
+              LogTree logTree,
+              sgx_enclave_id_t enclave_id,
+              FILE *OUTPUT,
+              NetworkClient client,
+              NetworkServer server) {
 
     int ret = 0;
     uint8_t data[BUFSIZ];
@@ -99,53 +106,56 @@ int lm_keyreq(const std::string& srcStr, LogTree logTree, sgx_enclave_id_t encla
     std::string encodedHexStr;
     ra_samp_request_header_t *p_request = NULL;
     ra_samp_response_header_t *p_response = NULL;
-    int data_size, msg_size, recvlen;
+    int data_size, msg2_size, recvlen;
 
+    std::string srcStr;
+    srcStr = std::to_string(*((int*)p_msg));
     sha256(srcStr, encodedHexStr);
     ChronTreeT::Hash hash(encodedHexStr);
     logTree.append(hash, proofs);
 
-    msg_size = proofs.serialise(data);
-    p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);
+    msg2_size = proofs.serialise(data);
+    p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg2_size);
     p_request->type = TYPE_RA_KEYREQ;
-    p_request->size = msg_size;
+    p_request->size = msg2_size;
 
     // todo: encrypt/decrypt
-    memcpy_s(p_request->body, msg_size, data, msg_size);
+    memcpy_s(p_request->body, msg2_size, data, msg2_size);
 
-    if (memcpy_s(p_request->body, msg_size, data, msg_size)) {
-        fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
+    if (memcpy_s(p_request->body, msg2_size, data, msg2_size)) {
+        fprintf(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
                 __FUNCTION__, __LINE__);
         ret = -1;
         goto CLEANUP;
     }
 
     memset(client.sendbuf, 0, BUFSIZ);
-    memcpy_s(client.sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + msg_size);
+    memcpy_s(client.sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + msg2_size);
     client.SendTo(sizeof(ra_samp_request_header_t) + p_request->size);
 
     recvlen = client.RecvFrom();
     p_response = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
 
     if (memcpy_s(p_response, recvlen, client.recvbuf, recvlen)) {
-        fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
+        fprintf(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
                 __FUNCTION__, __LINE__);
         ret = -1;
         goto CLEANUP;
     }
     if ((p_response->type != TYPE_RA_KEYREQ)) {
-        fprintf(OUTPUT, "\nError: INTERNAL ERROR - response type unmatched in [%s]-[%d].",
+        fprintf(OUTPUT, "Error: INTERNAL ERROR - response type unmatched in [%s]-[%d].",
                 __FUNCTION__, __LINE__);
         ret = -1;
         goto CLEANUP;
     }
+    std::cout << "certificate received" << std::endl;
 
-
-    data_size = p_response->size;
-    memcpy_s(data, data_size, p_response->body, data_size);
+    p_response->type = TYPE_LM_KEYREQ;
+    memset(server.sendbuf, 0, BUFSIZ);
+    memcpy_s(server.sendbuf, BUFSIZ, p_response, sizeof(ra_samp_response_header_t) + p_response->size);
+    server.SendTo(sizeof(ra_samp_response_header_t) + p_response->size);
 
 //    assert(proofs.path->verify(proofs.root));
-    std::cout << "certificate received" << std::endl;
 
     CLEANUP:
     SAFE_FREE(p_request);
@@ -158,7 +168,13 @@ int main(int argc, char *argv[])
     sgx_enclave_id_t enclave_id = 0;
     FILE *OUTPUT = stdout;
     NetworkClient client;
+    NetworkServer server;
+    int lm_port = 22333;
     LogTree logTree;
+    ra_samp_request_header_t *p_req;
+    ra_samp_response_header_t **p_resp;
+    ra_samp_response_header_t *p_resp_msg;
+    int buflen = 0;
 
     int launch_token_update = 0;
     sgx_launch_token_t launch_token = {0};
@@ -172,30 +188,84 @@ int main(int argc, char *argv[])
         if (SGX_SUCCESS != ret)
         {
             ret = -1;
-            fprintf(OUTPUT, "\nError, call sgx_create_enclave fail [%s].",
+            fprintf(OUTPUT, "Error, call sgx_create_enclave fail [%s].\n",
                     __FUNCTION__);
             goto CLEANUP;
         }
-        fprintf(OUTPUT, "\nCall sgx_create_enclave success.");
+        fprintf(OUTPUT, "Call sgx_create_enclave success.\n");
     }
 
-    // SOCKET: connect to server
-    if (client.client("127.0.0.1", 12333) != 0)
-    {
-        fprintf(OUTPUT, "Connect Server Error, Exit!\n");
-        ret = -1;
-        goto CLEANUP;
-    }
+    fprintf(OUTPUT, "start socket....\n");
+    server.server(lm_port);
 
+    do {
+        bool is_recv = true;
+        do {
+            //阻塞调用socket
+            buflen = server.RecvFrom();
+            if (buflen > 0 && buflen < BUFSIZ) {
+                p_req = (ra_samp_request_header_t *) malloc(buflen + 2);
 
-    if (remote_attestation(enclave_id, client) != SGX_SUCCESS)
-    {
-        fprintf(OUTPUT, "Remote Attestation Error, Exit!\n");
-        ret = -1;
-        goto CLEANUP;
-    }
+                fprintf(OUTPUT, "Prepare receive struct\n");
+                if (NULL == p_req) {
+                    ret = -1;
+                    goto CLEANUP;
+                }
+                if (memcpy_s(p_req, buflen + 2, server.recvbuf, buflen)) {
+                    fprintf(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s].\n",
+                            __FUNCTION__);
+                    ret = -1;
+                    goto CLEANUP;
+                }
+                fprintf(OUTPUT, "request type is %d\n", p_req->type);
+                switch (p_req->type) {
+                    case TYPE_LM_KEYREQ:
+                        fprintf(OUTPUT, "LM key request\n");
 
-    lm_keyreq("message", logTree, enclave_id, OUTPUT, client);
+                        // SOCKET: connect to server
+                        if (client.client("127.0.0.1", 12333) != 0)
+                        {
+                            fprintf(OUTPUT, "Connect Server Error, Exit!\n");
+                            ret = -1;
+                            goto CLEANUP;
+                        }
+
+                        if (remote_attestation(enclave_id, client) != SGX_SUCCESS)
+                        {
+                            fprintf(OUTPUT, "Remote Attestation Error, Exit!\n");
+                            ret = -1;
+                            goto CLEANUP;
+                        }
+
+                        lm_keyreq((const ra_samp_request_header_t *) ((uint8_t *) p_req +
+                                                                      sizeof(ra_samp_request_header_t)),
+                                      p_req->size,
+                                      logTree,
+                                      enclave_id,
+                                      OUTPUT,
+                                      client,
+                                      server);
+
+                        SAFE_FREE(p_req);
+                        is_recv = false;
+                        break;
+
+                    default:
+                        ret = -1;
+                        fprintf(stderr, "Error, unknown ra message type. Type = %d [%s].\n",
+                                p_req->type, __FUNCTION__);
+                        goto CLEANUP;
+                }
+            }
+        } while (is_recv);
+
+        ret = server.accept_client();
+        if (ret) {
+            fprintf(OUTPUT, "Accept failed.\n");
+            goto CLEANUP;
+        }
+
+    } while (true);
 
 
 //    aibeAlgo.run(OUTPUT);
@@ -207,7 +277,7 @@ CLEANUP:
     client.Cleanupsocket();
     sgx_destroy_enclave(enclave_id);
 
-    fprintf(OUTPUT, "\nSuccess Clean Up A-IBE ");
+    fprintf(OUTPUT, "Success Clean Up A-IBE ");
 
     return ret;
 }
