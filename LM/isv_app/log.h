@@ -40,10 +40,7 @@ public:
     std::shared_ptr<ChronTreeT::Path> path;
 
     bool verify_proofs() {
-        if (!path->verify(root)) {
-            return false;
-        }
-        return true;
+        return path->verify(root);
     }
 
     int serialise(uint8_t *bytes);
@@ -58,25 +55,37 @@ int Proofs::serialise(uint8_t *bytes) {
 
     header.size[0] = node.serialised_size();
     header.size[1] = root.serialised_size();
-    header.size[2] = path->serialised_size();
+//    header.size[2] = path->serialised_size();
 
-    memcpy(bytes, &header, sizeof(log_header_t));
     size += sizeof(log_header_t);
 
     // node
+    vec.clear();
     node.serialise(vec);
     std::copy(vec.begin(), vec.end(), bytes + size);
     size += header.size[0];
 
     // root
+    vec.clear();
     root.serialise(vec);
     std::copy(vec.begin(), vec.end(), bytes + size);
+    std::cout << root.to_string() << std::endl;
     size += header.size[1];
 
     // path
+    vec.clear();
     path->serialise(vec);
+    header.size[2] = vec.size();
+    std::cout << vec.size() << std::endl;
+    for (unsigned char & it : vec) {
+        printf("%x ", it);
+    } std::cout << std::endl;
     std::copy(vec.begin(), vec.end(), bytes + size);
     size += header.size[2];
+
+    std::cout << path->root()->to_string() << std::endl;
+
+    memcpy(bytes, &header, sizeof(log_header_t));
 
     return size;
 }
@@ -109,7 +118,15 @@ int Proofs::deserialise(uint8_t *bytes) {
     len = header.size[2];
     vec.clear();
     vec.assign(bytes + size, bytes + size + len);
+    std::cout << len << std::endl;
+    std::cout << vec.size() << std::endl;
+    for (unsigned char & it : vec) {
+        printf("%x ", it);
+    } std::cout << std::endl;
     path = std::make_shared<ChronTreeT::Path>(vec);
+    puts("this2");
+    std::cout << path->verify(root) << std::endl;
+    std::cout << path->root()->to_string() << std::endl;
     size += len;
 
     return size;

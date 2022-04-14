@@ -113,6 +113,29 @@ int lm_keyreq(const std::string& srcStr, LogTree logTree, sgx_enclave_id_t encla
     // todo: encrypt/decrypt
     memcpy_s(p_request->body, msg_size, data, msg_size);
 
+
+// test
+    Proofs tprf;
+    tprf.deserialise(data);
+    puts("\ntest node");
+    if (proofs.node != tprf.node) {
+        fprintf(stdout, "\nnode failed.");
+    }
+    puts("\ntest root");
+    if (proofs.root != tprf.root) {
+        fprintf(stdout, "\nroot failed.");
+    }
+    puts("\ntest path");
+    if (proofs.path != tprf.path) {
+        fprintf(stdout, "\npath failed.");
+    }
+    puts("\nverify: \n");
+
+    if (!tprf.path->verify(tprf.root)) {
+        fprintf(stdout, "\nProofs verify failed.");
+    }
+    printf("verify pass\n");
+
     if (memcpy_s(p_request->body, msg_size, data, msg_size)) {
         fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
                 __FUNCTION__, __LINE__);
@@ -179,6 +202,9 @@ int main(int argc, char *argv[])
         fprintf(OUTPUT, "\nCall sgx_create_enclave success.");
     }
 
+// test
+    puts("test");
+    lm_keyreq("message", logTree, enclave_id, OUTPUT, client);
 
     // SOCKET: connect to server
     if (client.client("127.0.0.1", 12333) != 0)
@@ -187,6 +213,8 @@ int main(int argc, char *argv[])
         ret = -1;
         goto CLEANUP;
     }
+
+
     if (remote_attestation(enclave_id, client) != SGX_SUCCESS)
     {
         fprintf(OUTPUT, "Remote Attestation Error, Exit!\n");
