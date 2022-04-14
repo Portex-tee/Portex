@@ -456,7 +456,6 @@ int pkg_keyreq(const ra_samp_request_header_t *p_msg,
     memcpy_s(data, msg_size, p_msg, msg_size);
     puts("\nstart deserialise");
     proofs.deserialise(data);
-    //todo: fix verify
     if (!proofs.verify_proofs()) {
         fprintf(stderr, "\nProofs verify failed.");
     }
