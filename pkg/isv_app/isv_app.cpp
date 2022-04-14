@@ -457,9 +457,9 @@ int pkg_keyreq(const ra_samp_request_header_t *p_msg,
     puts("\nstart deserialise");
     proofs.deserialise(data);
     //todo: fix verify
-//    if (!proofs.verify_proofs()) {
-//        fprintf(stderr, "\nProofs verify failed.");
-//    }
+    if (!proofs.verify_proofs()) {
+        fprintf(stderr, "\nProofs verify failed.");
+    }
 
     fprintf(stderr, "\nProofs verify succeed.");
 

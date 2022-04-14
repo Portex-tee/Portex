@@ -40,10 +40,7 @@ public:
     std::shared_ptr<ChronTreeT::Path> path;
 
     bool verify_proofs() {
-        if (!path->verify(root)) {
-            return false;
-        }
-        return true;
+        return path->verify(root);
     }
 
     int serialise(uint8_t *bytes);
@@ -58,25 +55,30 @@ int Proofs::serialise(uint8_t *bytes) {
 
     header.size[0] = node.serialised_size();
     header.size[1] = root.serialised_size();
-    header.size[2] = path->serialised_size();
+//    header.size[2] = path->serialised_size();
 
-    memcpy(bytes, &header, sizeof(log_header_t));
     size += sizeof(log_header_t);
 
     // node
+    vec.clear();
     node.serialise(vec);
     std::copy(vec.begin(), vec.end(), bytes + size);
     size += header.size[0];
 
     // root
+    vec.clear();
     root.serialise(vec);
     std::copy(vec.begin(), vec.end(), bytes + size);
     size += header.size[1];
 
     // path
+    vec.clear();
     path->serialise(vec);
+    header.size[2] = vec.size();
     std::copy(vec.begin(), vec.end(), bytes + size);
     size += header.size[2];
+
+    memcpy(bytes, &header, sizeof(log_header_t));
 
     return size;
 }
@@ -89,7 +91,6 @@ int Proofs::deserialise(uint8_t *bytes) {
 
     len = sizeof(log_header_t);
     memcpy(&header, bytes, len);
-
     size += len;
 
     // node
@@ -110,8 +111,7 @@ int Proofs::deserialise(uint8_t *bytes) {
     len = header.size[2];
     vec.clear();
     vec.assign(bytes + size, bytes + size + len);
-//    path = std::make_shared<ChronTreeT::Path>(vec);
-//    printf("\ndeserialize path: vec size %ld, len %d\n", vec.size(), len);
+    path = std::make_shared<ChronTreeT::Path>(vec);
     size += len;
 
     return size;
