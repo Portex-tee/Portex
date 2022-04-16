@@ -280,6 +280,19 @@ int main(int argc, char *argv[]) {
 
     fprintf(OUTPUT, "A-IBE Success Init \n");
 
+
+//    aibeAlgo.load_param(param_path);
+//    aibeAlgo.init();
+//    aibeAlgo.dk_load();
+//    aibeAlgo.mpk_load();
+//    element_random(aibeAlgo.m);
+//    element_printf("%B\n", aibeAlgo.m);
+//    aibeAlgo.encrypt(ID);
+//    aibeAlgo.ct_store();
+//    aibeAlgo.ct_load();
+//    aibeAlgo.decrypt();
+//    element_printf("%B\n", aibeAlgo.m);
+
     printf("Please choose a function:\n"
            "1) key request\n"
            "2) key generation\n"
@@ -322,7 +335,7 @@ int main(int argc, char *argv[]) {
 ////    element init
             aibeAlgo.init();
             aibeAlgo.mpk_load();
-            puts("PKG: setup finished");
+            puts("Client: setup finished");
 ////    aibe: keygen
             if (client_keygen(ID, aibeAlgo, enclave_id, OUTPUT, client)) {
                 fprintf(stderr, "Key verify failed\n");
@@ -335,10 +348,26 @@ int main(int argc, char *argv[]) {
 
         case 3:
             aibeAlgo.load_param(param_path);
+            aibeAlgo.init();
+            aibeAlgo.mpk_load();
+            puts("Client: setup finished");
+
+            element_random(aibeAlgo.m);
+            element_printf("%B\n", aibeAlgo.m);
+            aibeAlgo.encrypt(ID);
+            aibeAlgo.ct_store();
+
             break;
         case 4:
             aibeAlgo.load_param(param_path);
+            aibeAlgo.init();
             aibeAlgo.dk_load();
+            aibeAlgo.mpk_load();
+            puts("Client: setup finished");
+
+            aibeAlgo.ct_load();
+            aibeAlgo.decrypt();
+            element_printf("%B\n", aibeAlgo.m);
             break;
         default:
             printf("Invalid function number, exit\n");

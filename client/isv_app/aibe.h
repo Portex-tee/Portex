@@ -15,16 +15,24 @@ const char param_path[] = "param/aibe.param";
 const char mpk_path[] = "param/mpk.out";
 const char msk_path[] = "param/msk.out";
 const char dk_path[] = "param/dk.out";
+const char ct_path[] = "ct.txt";
 
 
 typedef struct mpk_t {
     element_t X, Y, h, Z[N + 1];
 } mpk_t;
 
-
 typedef struct dk_t {
     element_t d1, d2, d3; // G1, G1, Zr
 } dk_t;
+
+typedef struct ct_t {
+    element_t c1, c2, c3, c4; // G1, G1, GT, GT
+};
+
+void ct_init(ct_t *ct, pairing_t pairing);
+
+void ct_clear(ct_t *ct);
 
 void mpk_init(mpk_t *mpk, pairing_t pairing);
 
@@ -57,6 +65,8 @@ public:
     element_t r2; // Zr: r''
     element_t el; // GT
     element_t er; // GT
+    element_t m;
+    ct_t ct;
 
     // pkg elements
     element_t r1; // Zr: r'
@@ -71,7 +81,7 @@ public:
 
     pairing_t pairing;
 
-    int size_comp_G1, size_comp_G2, size_Zr;
+    int size_comp_G1, size_comp_G2, size_Zr, size_GT;
 
     AibeAlgo(){};
 
@@ -97,13 +107,34 @@ public:
 
     int keygen3();
 
+    int encrypt(int id);
+
+    int decrypt();
+
     void clear();
 
+    void ct_store();
+
+    void ct_load();
 };
 
 
 int get_bit(int id, int n) {
     return (id >> (N - n)) & 1;
+}
+
+void ct_init(ct_t *ct, pairing_t pairing) {
+    element_init_G1(ct->c1, pairing);
+    element_init_G1(ct->c2, pairing);
+    element_init_GT(ct->c3, pairing);
+    element_init_GT(ct->c4, pairing);
+}
+
+void ct_clear(ct_t *ct) {
+    element_clear(ct->c1);
+    element_clear(ct->c2);
+    element_clear(ct->c3);
+    element_clear(ct->c4);
 }
 
 void mpk_init(mpk_t *mpk, pairing_t pairing) {
@@ -209,6 +240,7 @@ int AibeAlgo::load_param(const char *fn) {
 
     size_comp_G1 = pairing_length_in_bytes_compressed_G1(pairing);
     size_comp_G2 = pairing_length_in_bytes_compressed_G2(pairing);
+    size_GT = pairing_length_in_bytes_GT(pairing);
     size_Zr = pairing_length_in_bytes_Zr(pairing);
 
     CLEANUP:
@@ -229,6 +261,8 @@ void AibeAlgo::init() {
     element_init_Zr(r2, pairing);
     element_init_GT(el, pairing);
     element_init_GT(er, pairing);
+    element_init_GT(m, pairing);
+    ct_init(&ct, pairing);
 
     element_init_Zr(r1, pairing);
     element_init_Zr(t1, pairing);
@@ -426,6 +460,8 @@ void AibeAlgo::clear() {
     element_clear(r2);
     element_clear(el);
     element_clear(er);
+    element_clear(m);
+    ct_clear(&ct);
 
     element_clear(r1);
     element_clear(t1);
@@ -443,7 +479,7 @@ void AibeAlgo::dk_store() {
     uint8_t buffer[1024];
 
     element_to_bytes_compressed(buffer, dk.d1);
-    fwrite(buffer, size_comp_G2, 1, f);
+    fwrite(buffer, size_comp_G1, 1, f);
     element_to_bytes_compressed(buffer, dk.d2);
     fwrite(buffer, size_comp_G1, 1, f);
     element_to_bytes(buffer, dk.d3);
@@ -464,6 +500,90 @@ void AibeAlgo::dk_load() {
     element_from_bytes(dk.d3, (unsigned char *) buffer);
 
     fclose(f);
+}
+
+void AibeAlgo::ct_store() {
+    FILE *f = fopen(ct_path, "w+");
+    uint8_t buffer[1024];
+
+    element_to_bytes_compressed(buffer, ct.c1);
+    fwrite(buffer, size_comp_G1, 1, f);
+    element_to_bytes_compressed(buffer, ct.c2);
+    fwrite(buffer, size_comp_G1, 1, f);
+    element_to_bytes(buffer, ct.c3);
+    fwrite(buffer, size_GT, 1, f);
+    element_to_bytes(buffer, ct.c4);
+    fwrite(buffer, size_GT, 1, f);
+
+    fclose(f);
+}
+
+void AibeAlgo::ct_load() {
+    FILE *f = fopen(ct_path, "r+");
+    char buffer[1024];
+
+    fread(buffer, size_comp_G1, 1, f);
+    element_from_bytes_compressed(ct.c1, (unsigned char *) buffer);
+    fread(buffer, size_comp_G1, 1, f);
+    element_from_bytes_compressed(ct.c2, (unsigned char *) buffer);
+    fread(buffer, size_GT, 1, f);
+    element_from_bytes(ct.c3, (unsigned char *) buffer);
+    fread(buffer, size_GT, 1, f);
+    element_from_bytes(ct.c4, (unsigned char *) buffer);
+
+    fclose(f);
+}
+
+int AibeAlgo::encrypt(int id) {
+    element_t s;
+    element_init_Zr(s, pairing);
+    element_random(s);
+
+    element_pow_zn(ct.c1, mpk.X, s);
+
+    element_set(Hz, mpk.Z[0]);
+    {
+        mpz_t digit;
+        for (int i = 1; i <= z_size; ++i) {
+            mpz_init_set_si(digit, get_bit(id, i));
+            if (!mpz_is0(digit))
+                element_mul(Hz, Hz, mpk.Z[i]);
+            mpz_clear(digit);
+        }
+    }
+    element_pow_zn(ct.c2, Hz, s);
+
+    element_pairing(ct.c3, g, mpk.h);
+    element_pow_zn(ct.c3, ct.c3, s);
+
+    element_pairing(ct.c4, g, mpk.Y);
+    element_pow_zn(ct.c4, ct.c4, s);
+    element_mul(ct.c4, m, ct.c4);
+
+    element_clear(s);
+
+    return 0;
+}
+
+int AibeAlgo::decrypt() {
+
+    element_t ele_gt1;
+    element_t ele_gt2;
+    element_init_GT(ele_gt1, pairing);
+    element_init_GT(ele_gt2, pairing);
+
+    element_pairing(ele_gt1, ct.c2, dk.d2);
+    element_pow_zn(ele_gt2, ct.c3, dk.d3);
+    element_mul(ele_gt1, ele_gt1, ele_gt2);
+    element_pairing(ele_gt2, ct.c1, dk.d1);
+    element_div(ele_gt1, ele_gt1, ele_gt2);
+
+    element_mul(m, ct.c4, ele_gt1);
+
+    element_clear(ele_gt1);
+    element_clear(ele_gt2);
+
+    return 0;
 }
 
 #endif //PBC_TEST_AIBE_H
