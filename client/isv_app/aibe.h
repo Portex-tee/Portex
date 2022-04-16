@@ -14,6 +14,7 @@ const int ID = 0b10101010;
 const char param_path[] = "param/aibe.param";
 const char mpk_path[] = "param/mpk.out";
 const char msk_path[] = "param/msk.out";
+const char dk_path[] = "param/dk.out";
 
 
 typedef struct mpk_t {
@@ -83,6 +84,10 @@ public:
     void msk_load();
 
     void mpk_load();
+
+    void dk_store();
+
+    void dk_load();
 
     void init();
 
@@ -431,6 +436,34 @@ void AibeAlgo::clear() {
     element_clear(tg);
     element_clear(te);
 
+}
+
+void AibeAlgo::dk_store() {
+    FILE *f = fopen(dk_path, "w+");
+    uint8_t buffer[1024];
+
+    element_to_bytes_compressed(buffer, dk.d1);
+    fwrite(buffer, size_comp_G2, 1, f);
+    element_to_bytes_compressed(buffer, dk.d2);
+    fwrite(buffer, size_comp_G1, 1, f);
+    element_to_bytes(buffer, dk.d3);
+    fwrite(buffer, size_Zr, 1, f);
+
+    fclose(f);
+}
+
+void AibeAlgo::dk_load() {
+    FILE *f = fopen(dk_path, "r+");
+    char buffer[1024];
+
+    fread(buffer, size_comp_G1, 1, f);
+    element_from_bytes_compressed(dk.d1, (unsigned char *) buffer);
+    fread(buffer, size_comp_G1, 1, f);
+    element_from_bytes_compressed(dk.d2, (unsigned char *) buffer);
+    fread(buffer, size_Zr, 1, f);
+    element_from_bytes(dk.d3, (unsigned char *) buffer);
+
+    fclose(f);
 }
 
 #endif //PBC_TEST_AIBE_H
