@@ -91,7 +91,7 @@ static sample_spid_t g_sim_spid = {"Service X"};
 
 
 // Simulates the attestation server function for verifying the quote produce by
-// the ISV enclave. It doesn't decrypt or verify the quote in
+// the ISV enclave. It doesn't block_decrypt or verify the quote in
 // the simulation.  Just produces the attestaion verification
 // report with the platform info blob.
 //

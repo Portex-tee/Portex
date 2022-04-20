@@ -245,23 +245,24 @@ int main(int argc, char *argv[]) {
     int pkg_port = 12333;
     int lm_port = 22333;
     int mod = 0;
+    int launch_token_update = 0;
+    sgx_launch_token_t launch_token = {0};
 
 
     //aibe load_param
     pairing_t pairing;
-    char param[1024];
-    FILE *param_file = fopen(param_path, "r");
-    size_t count = fread(param, sizeof(char), 1024, param_file);
-    if (!count) {
-        pbc_die("param file path error\n");
+
+////    aibe load_param
+    if (aibeAlgo.load_param(param_path)) {
+        fprintf(stderr, "Param File Path error\n");
+        exit(-1);
     }
-    pairing_init_set_buf(pairing, param, count);
-
+//    printf("%d, %d, %d\n", aibeAlgo.size_GT, aibeAlgo.size_comp_G1, aibeAlgo.size_Zr);
+    uint8_t ct[aibeAlgo.size_ct];
     fprintf(OUTPUT, "A-IBE Success Set Up\n");
+////    element init
+    aibeAlgo.init();
 
-
-    int launch_token_update = 0;
-    sgx_launch_token_t launch_token = {0};
     memset(&launch_token, 0, sizeof(sgx_launch_token_t));
     {
         ret = sgx_create_enclave(_T(ENCLAVE_PATH),
@@ -278,7 +279,7 @@ int main(int argc, char *argv[]) {
         fprintf(OUTPUT, "Call sgx_create_enclave success.\n");
     }
 
-    fprintf(OUTPUT, "A-IBE Success Init \n");
+
 
 
 //    aibeAlgo.load_param(param_path);
@@ -287,17 +288,17 @@ int main(int argc, char *argv[]) {
 //    aibeAlgo.mpk_load();
 //    element_random(aibeAlgo.m);
 //    element_printf("%B\n", aibeAlgo.m);
-//    aibeAlgo.encrypt(ID);
-//    aibeAlgo.ct_store();
-//    aibeAlgo.ct_load();
-//    aibeAlgo.decrypt();
+//    aibeAlgo.block_encrypt(ID);
+//    aibeAlgo.ct_write();
+//    aibeAlgo.ct_read();
+//    aibeAlgo.block_decrypt();
 //    element_printf("%B\n", aibeAlgo.m);
 
     printf("Please choose a function:\n"
            "1) key request\n"
            "2) key generation\n"
-           "3) encrypt\n"
-           "4) decrypt\n"
+           "3) block_encrypt\n"
+           "4) block_decrypt\n"
            "Please input a number:");
     scanf("%d", &mod);
 
@@ -325,15 +326,6 @@ int main(int argc, char *argv[]) {
                 ret = -1;
                 goto CLEANUP;
             }
-////    aibe load_param
-            if (aibeAlgo.load_param(param_path)) {
-                ret = -1;
-                fprintf(stderr, "Param File Path error\n");
-                goto CLEANUP;
-            }
-            fprintf(OUTPUT, "A-IBE Success Set Up\n");
-////    element init
-            aibeAlgo.init();
             aibeAlgo.mpk_load();
             puts("Client: setup finished");
 ////    aibe: keygen
@@ -347,28 +339,31 @@ int main(int argc, char *argv[]) {
             break;
 
         case 3:
-            aibeAlgo.load_param(param_path);
-            aibeAlgo.init();
             aibeAlgo.mpk_load();
             puts("Client: setup finished");
 
-            element_random(aibeAlgo.m);
+//            element_random(aibeAlgo.m);
             element_printf("%B\n", aibeAlgo.m);
-            aibeAlgo.encrypt(ID);
-            aibeAlgo.ct_store();
+            aibeAlgo.block_encrypt(ID);
+            aibeAlgo.ct_write();
 
             break;
         case 4:
-            aibeAlgo.load_param(param_path);
-            aibeAlgo.init();
             aibeAlgo.dk_load();
             aibeAlgo.mpk_load();
             puts("Client: setup finished");
 
-            aibeAlgo.ct_load();
-            aibeAlgo.decrypt();
+            aibeAlgo.ct_read();
+            aibeAlgo.block_decrypt();
             element_printf("%B\n", aibeAlgo.m);
             break;
+
+        case 5:
+            aibeAlgo.dk_load();
+            aibeAlgo.mpk_load();
+            aibeAlgo.encrypt(ct, "hello world", ID);
+            break;
+
         default:
             printf("Invalid function number, exit\n");
             goto CLEANUP;
@@ -380,8 +375,7 @@ int main(int argc, char *argv[]) {
     client.Cleanupsocket();
     sgx_destroy_enclave(enclave_id);
 
-    if (mod == 2)
-        aibeAlgo.clear();
+    aibeAlgo.clear();
     fprintf(OUTPUT, "Success Clean Up A-IBE \n");
 
     return ret;

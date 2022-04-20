@@ -7,8 +7,11 @@
 
 #include <pbc/pbc.h>
 #include <pbc/pbc_test.h>
+#include <cmath>
 
 #define N 8
+#define BLOCK_MAX 8
+
 const int z_size = N + 1;
 const int ID = 0b10101010;
 const char param_path[] = "param/aibe.param";
@@ -48,6 +51,8 @@ void dk_from_bytes(dk_t *dk, uint8_t *data, int size_comp_G1);
 
 int get_bit(int id, int n);
 
+void data_xor(uint8_t *out, const uint8_t *d1, const uint8_t *d2, int size);
+
 class AibeAlgo {
 public:
 
@@ -81,7 +86,7 @@ public:
 
     pairing_t pairing;
 
-    int size_comp_G1, size_comp_G2, size_Zr, size_GT;
+    int size_comp_G1, size_comp_G2, size_Zr, size_GT, size_block, size_ct_block, size_ct, size_msg_block;
 
     AibeAlgo(){};
 
@@ -107,15 +112,23 @@ public:
 
     int keygen3();
 
-    int encrypt(int id);
+    int block_encrypt(int id);
 
-    int decrypt();
+    int block_decrypt();
 
     void clear();
 
-    void ct_store();
+    void ct_write();
 
-    void ct_load();
+    void ct_read();
+
+    void ct_store(uint8_t *buf);
+
+    void ct_load(uint8_t *buf);
+
+    void encrypt(uint8_t *ct_buf, const char *str, int id);
+
+    void decrypt(uint8_t *buf);
 };
 
 
@@ -242,6 +255,10 @@ int AibeAlgo::load_param(const char *fn) {
     size_comp_G2 = pairing_length_in_bytes_compressed_G2(pairing);
     size_GT = pairing_length_in_bytes_GT(pairing);
     size_Zr = pairing_length_in_bytes_Zr(pairing);
+    size_ct_block = size_comp_G1 * 2 + size_GT * 2;
+    size_msg_block = size_GT;
+    size_block = size_msg_block + size_ct_block;
+    size_ct = BLOCK_MAX * size_block;
 
     CLEANUP:
     return ret;
@@ -502,39 +519,52 @@ void AibeAlgo::dk_load() {
     fclose(f);
 }
 
-void AibeAlgo::ct_store() {
+void AibeAlgo::ct_write() {
     FILE *f = fopen(ct_path, "w+");
-    uint8_t buffer[1024];
+    uint8_t buffer[size_ct_block + 100];
 
-    element_to_bytes_compressed(buffer, ct.c1);
-    fwrite(buffer, size_comp_G1, 1, f);
-    element_to_bytes_compressed(buffer, ct.c2);
-    fwrite(buffer, size_comp_G1, 1, f);
-    element_to_bytes(buffer, ct.c3);
-    fwrite(buffer, size_GT, 1, f);
-    element_to_bytes(buffer, ct.c4);
-    fwrite(buffer, size_GT, 1, f);
+    ct_store(buffer);
+
+    fwrite(buffer, size_ct_block, 1, f);
 
     fclose(f);
 }
 
-void AibeAlgo::ct_load() {
+void AibeAlgo::ct_read() {
     FILE *f = fopen(ct_path, "r+");
-    char buffer[1024];
+    uint8_t buffer[size_ct_block + 100];
 
-    fread(buffer, size_comp_G1, 1, f);
-    element_from_bytes_compressed(ct.c1, (unsigned char *) buffer);
-    fread(buffer, size_comp_G1, 1, f);
-    element_from_bytes_compressed(ct.c2, (unsigned char *) buffer);
-    fread(buffer, size_GT, 1, f);
-    element_from_bytes(ct.c3, (unsigned char *) buffer);
-    fread(buffer, size_GT, 1, f);
-    element_from_bytes(ct.c4, (unsigned char *) buffer);
+    fread(buffer, size_ct_block, 1, f);
+    ct_load(buffer);
 
     fclose(f);
 }
 
-int AibeAlgo::encrypt(int id) {
+void AibeAlgo::ct_store(uint8_t *buf) {
+    int it = 0;
+    element_to_bytes_compressed(buf + it, ct.c1);
+    it += size_comp_G1;
+    element_to_bytes_compressed(buf + it, ct.c2);
+    it += size_comp_G1;
+    element_to_bytes(buf + it, ct.c3);
+    it += size_GT;
+    element_to_bytes(buf + it, ct.c4);
+    it += size_GT;
+}
+
+void AibeAlgo::ct_load(uint8_t *buf) {
+    int it = 0;
+    element_from_bytes_compressed(ct.c1, (unsigned char *) buf + it);
+    it += size_comp_G1;
+    element_from_bytes_compressed(ct.c2, (unsigned char *) buf + it);
+    it += size_comp_G1;
+    element_from_bytes(ct.c3, (unsigned char *) buf + it);
+    it += size_GT;
+    element_from_bytes(ct.c4, (unsigned char *) buf + it);
+    it += size_GT;
+}
+
+int AibeAlgo::block_encrypt(int id) {
     element_t s;
     element_init_Zr(s, pairing);
     element_random(s);
@@ -565,7 +595,7 @@ int AibeAlgo::encrypt(int id) {
     return 0;
 }
 
-int AibeAlgo::decrypt() {
+int AibeAlgo::block_decrypt() {
 
     element_t ele_gt1;
     element_t ele_gt2;
@@ -584,6 +614,46 @@ int AibeAlgo::decrypt() {
     element_clear(ele_gt2);
 
     return 0;
+}
+
+void AibeAlgo::encrypt(uint8_t *ct_buf, const char *str, int id) {
+    int len = strlen(str);
+    int block_num = (len % size_msg_block) ? len / size_msg_block + 1: len / size_msg_block;
+    uint8_t strbuf[block_num * size_msg_block];
+
+    memset(strbuf, 0, sizeof(strbuf));
+    strcpy((char *)strbuf, str);
+
+    for (int i = 0; i < block_num; ++i) {
+        element_random(m);
+        block_encrypt(id);
+        element_to_bytes(ct_buf + i * size_block, m);
+        data_xor(ct_buf + i * size_block, strbuf + i * size_msg_block, ct_buf + i * size_block, size_msg_block);
+        ct_store(ct_buf + i * size_block + size_msg_block);
+    }
+
+    uint8_t msg[size_ct];
+
+    for (int i = 0; i < block_num; ++i) {
+        ct_load(ct_buf + i * size_block + size_msg_block);
+        block_decrypt();
+        element_to_bytes(msg + i * size_msg_block, m);
+        data_xor(msg + i * size_msg_block, msg + i * size_msg_block, ct_buf + i * size_block, size_msg_block);
+    }
+
+    printf("%s\n", msg);
+}
+
+void AibeAlgo::decrypt(uint8_t *buf) {
+
+}
+
+void data_xor(uint8_t *out, const uint8_t *d1, const uint8_t *d2, int size) {
+    uint8_t buffer[size];
+    for (int i = 0; i < size; ++i) {
+        buffer[i] = d1[i] ^ d2[i];
+    }
+    memcpy_s(out, size, buffer, size);
 }
 
 #endif //PBC_TEST_AIBE_H
