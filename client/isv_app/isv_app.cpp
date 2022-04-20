@@ -247,7 +247,8 @@ int main(int argc, char *argv[]) {
     int mod = 0;
     int launch_token_update = 0;
     sgx_launch_token_t launch_token = {0};
-
+    FILE *f;
+    int ct_size, msg_size;
 
     //aibe load_param
     pairing_t pairing;
@@ -258,7 +259,8 @@ int main(int argc, char *argv[]) {
         exit(-1);
     }
 //    printf("%d, %d, %d\n", aibeAlgo.size_GT, aibeAlgo.size_comp_G1, aibeAlgo.size_Zr);
-    uint8_t ct[aibeAlgo.size_ct];
+    uint8_t ct_buf[aibeAlgo.size_ct + 10];
+    uint8_t msg_buf[aibeAlgo.size_ct + 10];
     fprintf(OUTPUT, "A-IBE Success Set Up\n");
 ////    element init
     aibeAlgo.init();
@@ -278,9 +280,6 @@ int main(int argc, char *argv[]) {
         }
         fprintf(OUTPUT, "Call sgx_create_enclave success.\n");
     }
-
-
-
 
 //    aibeAlgo.load_param(param_path);
 //    aibeAlgo.init();
@@ -341,27 +340,42 @@ int main(int argc, char *argv[]) {
         case 3:
             aibeAlgo.mpk_load();
             puts("Client: setup finished");
+            fprintf(OUTPUT, "Start Encrypt\n");
+            f = fopen(msg_path, "r+");
+            msg_size = fread(msg_buf, sizeof(uint8_t), aibeAlgo.size_ct, f);
+            fclose(f);
 
-//            element_random(aibeAlgo.m);
-            element_printf("%B\n", aibeAlgo.m);
-            aibeAlgo.block_encrypt(ID);
-            aibeAlgo.ct_write();
+            fprintf(OUTPUT, "Message:\n%s\n", msg_buf);
+            fprintf(OUTPUT, "Message size: %d\n", msg_size);
+
+
+            ct_size = aibeAlgo.encrypt(ct_buf, (char *)msg_buf, ID);
+            f = fopen(ct_path, "w+");
+            fwrite(ct_buf, ct_size, 1, f);
+            fclose(f);
+
+            fprintf(OUTPUT, "encrypt size: %d, block size %d\n", ct_size, aibeAlgo.size_block);
 
             break;
+
         case 4:
             aibeAlgo.dk_load();
             aibeAlgo.mpk_load();
             puts("Client: setup finished");
+            fprintf(OUTPUT, "Start Decrypt\n");
 
-            aibeAlgo.ct_read();
-            aibeAlgo.block_decrypt();
-            element_printf("%B\n", aibeAlgo.m);
-            break;
+            f = fopen(ct_path, "r+");
+            ct_size = fread(ct_buf, sizeof(uint8_t), aibeAlgo.size_ct, f);
+            fclose(f);
+            fprintf(OUTPUT, "decrypt size: %d, ct size: %d\n", ct_size, aibeAlgo.size_ct);
 
-        case 5:
-            aibeAlgo.dk_load();
-            aibeAlgo.mpk_load();
-            aibeAlgo.encrypt(ct, "hello world", ID);
+            aibeAlgo.decrypt(msg_buf, ct_buf, ct_size);
+            printf("%s\n", msg_buf);
+
+            f = fopen(out_path, "w+");
+            fwrite(msg_buf, strlen((char *)msg_buf), 1, f);
+            fclose(f);
+
             break;
 
         default:

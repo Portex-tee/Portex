@@ -18,7 +18,9 @@ const char param_path[] = "param/aibe.param";
 const char mpk_path[] = "param/mpk.out";
 const char msk_path[] = "param/msk.out";
 const char dk_path[] = "param/dk.out";
-const char ct_path[] = "ct.txt";
+const char ct_path[] = "ct.out";
+const char msg_path[] = "msg.txt";
+const char out_path[] = "out.txt";
 
 
 typedef struct mpk_t {
@@ -118,17 +120,13 @@ public:
 
     void clear();
 
-    void ct_write();
-
-    void ct_read();
-
     void ct_store(uint8_t *buf);
 
     void ct_load(uint8_t *buf);
 
-    void encrypt(uint8_t *ct_buf, const char *str, int id);
+    int encrypt(uint8_t *ct_buf, const char *str, int id);
 
-    void decrypt(uint8_t *buf);
+    void decrypt(uint8_t *msg, uint8_t *data, int size);
 };
 
 
@@ -519,27 +517,6 @@ void AibeAlgo::dk_load() {
     fclose(f);
 }
 
-void AibeAlgo::ct_write() {
-    FILE *f = fopen(ct_path, "w+");
-    uint8_t buffer[size_ct_block + 100];
-
-    ct_store(buffer);
-
-    fwrite(buffer, size_ct_block, 1, f);
-
-    fclose(f);
-}
-
-void AibeAlgo::ct_read() {
-    FILE *f = fopen(ct_path, "r+");
-    uint8_t buffer[size_ct_block + 100];
-
-    fread(buffer, size_ct_block, 1, f);
-    ct_load(buffer);
-
-    fclose(f);
-}
-
 void AibeAlgo::ct_store(uint8_t *buf) {
     int it = 0;
     element_to_bytes_compressed(buf + it, ct.c1);
@@ -616,7 +593,7 @@ int AibeAlgo::block_decrypt() {
     return 0;
 }
 
-void AibeAlgo::encrypt(uint8_t *ct_buf, const char *str, int id) {
+int AibeAlgo::encrypt(uint8_t *ct_buf, const char *str, int id) {
     int len = strlen(str);
     int block_num = (len % size_msg_block) ? len / size_msg_block + 1: len / size_msg_block;
     uint8_t strbuf[block_num * size_msg_block];
@@ -632,20 +609,22 @@ void AibeAlgo::encrypt(uint8_t *ct_buf, const char *str, int id) {
         ct_store(ct_buf + i * size_block + size_msg_block);
     }
 
-    uint8_t msg[size_ct];
-
-    for (int i = 0; i < block_num; ++i) {
-        ct_load(ct_buf + i * size_block + size_msg_block);
-        block_decrypt();
-        element_to_bytes(msg + i * size_msg_block, m);
-        data_xor(msg + i * size_msg_block, msg + i * size_msg_block, ct_buf + i * size_block, size_msg_block);
-    }
-
-    printf("%s\n", msg);
+    return block_num * size_block;
 }
 
-void AibeAlgo::decrypt(uint8_t *buf) {
+void AibeAlgo::decrypt(uint8_t *msg, uint8_t *data, int size) {
+    int block_num = size / size_block;
 
+    for (int i = 0; i < block_num; ++i) {
+        ct_load(data + i * size_block + size_msg_block);
+        block_decrypt();
+        element_to_bytes(msg + i * size_msg_block, m);
+        data_xor(msg + i * size_msg_block, msg + i * size_msg_block, data + i * size_block, size_msg_block);
+    }
+
+    msg[block_num * size_msg_block] = '\0';
+
+//    printf("%s\n", msg);
 }
 
 void data_xor(uint8_t *out, const uint8_t *d1, const uint8_t *d2, int size) {
