@@ -73,7 +73,7 @@ int ra_network_send_receive(const char *server_url,
             memset(network.sendbuf, 0, BUFSIZ);
             memcpy_s(network.sendbuf, BUFSIZ, p_req, sizeof(ra_samp_request_header_t) + p_req->size);
             len = network.SendTo(sizeof(ra_samp_request_header_t) + p_req->size);
-            sleep(1);//等待起作用
+//            sleep(1);//等待起作用
             if (0 == len) {
                 fprintf(stderr, "\nError,Send MSG0 fail [%s].",
                         __FUNCTION__);
