@@ -400,3 +400,30 @@ sgx_status_t enclave_decrypt(
     } while(0);
     return ret;
 }
+
+
+sgx_status_t enclave_update(
+        uint8_t *p_data,
+        uint32_t secret_size,
+        uint8_t *out_data,
+        uint8_t *in_mac)
+{
+    sgx_status_t ret = SGX_SUCCESS;
+    uint8_t aes_gcm_iv[12] = {0};
+    do {
+        ret = sgx_rijndael128GCM_decrypt(&sk_key,
+                                         p_data,
+                                         secret_size,
+                                         out_data,
+                                         &aes_gcm_iv[0],
+                                         12,
+                                         NULL,
+                                         0,
+                                         (const sgx_aes_gcm_128bit_tag_t *) in_mac);
+        if(SGX_SUCCESS != ret)
+        {
+            break;
+        }
+    } while(0);
+    return ret;
+}
