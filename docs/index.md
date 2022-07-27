@@ -34,8 +34,6 @@
 
 In **Portex**, four types of entities are involved: *private key generator* $\mathsf{PKG}$, a *log manager* $\mathsf{LM}$, and user clients $\mathsf{CLIENTS}$ and tracers $\mathsf{TRACERS}$. The $\mathsf{PKG}$ is required to run inside TEEs. The log manager and users' platforms do not necessarily to support TEEs. Similar to the standard IBE system, the $\mathsf{PKG}$ is responsible for generating the public parameters and extracting and distributing the user's private key. User clients $\mathsf{CLIENTS}$ are used to perform the decryption of ciphertext. The $\mathsf{LM}$ updates and stores the logs when $\mathsf{PKG}$ distributes a private key. $\mathsf{TRACERS}$ that any roles can serve are responsible for detecting the wrongdoing of $\mathsf{CLIENTS}$ and the TEE-based $\mathsf{PKG}$ and users. The main idea behind **Portex** is to run $\mathsf{PKG}$ inside a TEE and force the action of key generation to render a public auditable log.
 
+The $\mathsf{PKG}$ first creates a generation enclave (GE) for generating the public parameters and the master private keys. When a user attempts to get a private key, the client sends a key request to the log manager. If the user's identity is valid, the log manager updates the log tree, generates and sends a set of proofs to $\mathsf{PKG}$. The GE verifies the proofs and updates its root hash. Then, GE generates a *one-off certificate* and sends it back to $\mathsf{LM}$. After that, $\mathsf{LM}$ transfers such a *certificate* to the user's client. The ciphertext is encrypted using the user's identity. If a user wants to decrypt the ciphertext, he has to send a request to the $\mathsf{PKG}$. When $\mathsf{PKG}$ receives the request from the user, it will run the private key generation protocol.
+
 <img src="assets/image-20220726180341133.png" alt="image-20220726180341133" style="zoom: 40%;" />
-
-## Implementation
-
-The implementation is published in [ADProtex/Protex (github.com)](https://github.com/ADProtex/Protex)
