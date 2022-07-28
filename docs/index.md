@@ -36,7 +36,7 @@ In **Portex**, four types of entities are involved: *private key generator* $\ma
 
 ## Workflow
 
-0. The $\mathsf{PKG}$ creates a generation enclave (GE) for generating the public parameters and the master private keys. 
+0. Loads the $\mathsf{PKG}$ into the generation enclave (GE) for generating the public parameters and the master private keys. 
 
 1. When a user attempts to get a private key, the client sends a key request to the log manager. 
 2. If the user's identity is valid, the log manager updates the log tree, generates and sends a set of proofs to $\mathsf{PKG}$. 
@@ -45,5 +45,5 @@ In **Portex**, four types of entities are involved: *private key generator* $\ma
 5. The ciphertext is encrypted using the user's identity. If a user wants to decrypt the ciphertext, he has to send the $oc$ to the $\mathsf{PKG}$. 
 6. When $\mathsf{PKG}$ receives the request from the user, it will run the private key generation protocol.
 
-<img src="assets/design.png" alt="design" style="zoom: 25%;" />
+<img src="assets/design.png" alt="design" align="middle" style="zoom: 25%;" />
 
