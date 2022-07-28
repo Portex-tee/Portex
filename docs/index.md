@@ -45,5 +45,5 @@ In **Portex**, four types of entities are involved: *private key generator* $\ma
 5. The ciphertext is encrypted using the user's identity. If a user wants to decrypt the ciphertext, he has to send the $oc$ to the $\mathsf{PKG}$. 
 6. When $\mathsf{PKG}$ receives the request from the user, it will run the private key generation protocol.
 
-<img src="assets/design.png" alt="design" align="middle" style="zoom: 25%;" />
+<img src="assets/design.png" alt="design" align="middle" style="zoom: 30%;" />
 
