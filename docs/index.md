@@ -11,7 +11,6 @@
     </script>
 </head>
 
-> 2022/7/26
 
 ## What is **Portex**?
 
