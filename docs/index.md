@@ -34,6 +34,8 @@
 
 In **Portex**, four types of entities are involved: *private key generator* $\mathsf{PKG}$, a *log manager* $\mathsf{LM}$, and user clients $\mathsf{CLIENTS}$ and tracers $\mathsf{TRACERS}$. The $\mathsf{PKG}$ is required to run inside TEEs. The log manager and users' platforms do not necessarily to support TEEs. Similar to the standard IBE system, the $\mathsf{PKG}$ is responsible for generating the public parameters and extracting and distributing the user's private key. User clients $\mathsf{CLIENTS}$ are used to perform the decryption of ciphertext. The $\mathsf{LM}$ updates and stores the logs when $\mathsf{PKG}$ distributes a private key. $\mathsf{TRACERS}$ that any roles can serve are responsible for detecting the wrongdoing of $\mathsf{CLIENTS}$ and the TEE-based $\mathsf{PKG}$ and users. The main idea behind **Portex** is to run $\mathsf{PKG}$ inside a TEE and force the action of key generation to render a public auditable log.
 
+<img src="assets/design.png" alt="design" align="middle" style="zoom: 32%;" />
+
 ## Workflow
 
 0. Loads the $\mathsf{PKG}$ into the generation enclave (GE) for generating the public parameters and the master private keys. 
@@ -45,5 +47,5 @@ In **Portex**, four types of entities are involved: *private key generator* $\ma
 5. The ciphertext is encrypted using the user's identity. If a user wants to decrypt the ciphertext, he has to send the $oc$ to the $\mathsf{PKG}$. 
 6. When $\mathsf{PKG}$ receives the request from the user, it will run the private key generation protocol.
 
-<img src="assets/design.png" alt="design" align="middle" style="zoom: 30%;" />
+
 
