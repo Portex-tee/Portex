@@ -49,7 +49,7 @@ In Portex, four types of entities are involved: *private key generator* <font co
 
 ## Implementation
 
-Here is the demonstrate of Portex
+Here is the demo of the Portex system
 
 <center>
     <video width="720" height="480" controls>     
