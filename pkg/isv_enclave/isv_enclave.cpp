@@ -67,6 +67,9 @@ static const sgx_ec256_public_t g_sp_pub_key = {
 // 0x01,0x02,0x03,0x04,0x0x5,0x0x6,0x0x7
 uint8_t g_secret[8] = {0};
 sgx_ec_key_128bit_t sk_key;
+sgx_rsa3072_key_t sk_sign;
+uint8_t oc_list[100000] = {0};
+uint8_t *rth;
 //lhadd
 
 #ifdef SUPPLIED_KEY_DERIVATION
@@ -425,5 +428,48 @@ sgx_status_t enclave_update(
             break;
         }
     } while(0);
+    return ret;
+}
+
+sgx_status_t enclave_keygen(
+        uint8_t *pk_c,
+        uint8_t *proof,
+        uint32_t prf_size,
+        uint8_t *node,
+        uint32_t node_size,
+        uint8_t *ir,
+        uint32_t ir_size,
+        uint8_t *sig_ir,
+        uint8_t *ct_oc,
+        uint32_t *ct_size)
+{
+    sgx_status_t ret = SGX_SUCCESS;
+    sgx_sha256_hash_t hash;
+    uint8_t *oc;
+    uint32_t oc_size;
+
+    // verify insertion request
+    ret = enclave_ir_verify(ir, ir_size, (const sgx_rsa3072_signature_t *)sig_ir);
+    if (ret != SGX_SUCCESS)
+        return ret; // could not verify ir
+
+    // measure the node hash
+    sgx_sha256_msg(*node, node_size, sgx_sha256_hash_t &hash);
+
+    // verify pop and poe, then update rth
+    ret = enclave_rth_update(&hash, proof, prf_size);
+    if (ret != SGX_SUCCESS)
+        return ret; // could not verify proof
+
+    // sign for N, then generate one-off cert
+    ret = enclave_get_oc(N, sk_sign, oc, &oc_size);
+    if (ret != SGX_SUCCESS)
+        return ret;
+
+    // append oc to list
+    oc_list[ol_size++] = oc;
+    // encrypt oc with client public key
+    ret = enclave_encrypt((const sgx_ec_key_128bit_t *)pk_c, oc, oc_size, ct_oc, ct_size);
+
     return ret;
 }

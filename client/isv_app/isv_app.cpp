@@ -32,6 +32,7 @@
 // This sample is confined to the communication between a SGX client platform
 // and an ISV Application Server.
 
+#include <ctime>
 #include "ra.h"
 #include <stdio.h>
 #include <limits.h>
@@ -237,6 +238,7 @@ int client_keyreq(NetworkClient client) {
 }
 
 int main(int argc, char *argv[]) {
+//    printf("%d\n", sizeof(uint8_t));
     int ret = 0;
     sgx_enclave_id_t enclave_id = 0;
     AibeAlgo aibeAlgo;
@@ -250,8 +252,24 @@ int main(int argc, char *argv[]) {
     FILE *f;
     int ct_size, msg_size;
 
+    // test
+
+    sgx_status_t status = SGX_SUCCESS;
+    int busy_retry_time;
+    int data_len = 1 << 13;
+    uint8_t data[data_len];
+    uint8_t output[data_len];
+    uint8_t mac[data_len];
+    sgx_ec256_public_t ecc_pub;
+    sgx_ec256_private_t ecc_pri;
+    sgx_ec256_signature_t ecc_sig;
+    sgx_ecc_state_handle_t ecc_handle;
+    uint8_t result;
+
+    clock_t cnt;
+    double ts[10100];
+
     //aibe load_param
-    pairing_t pairing;
 
 ////    aibe load_param
     if (aibeAlgo.load_param(param_path)) {
@@ -293,6 +311,9 @@ int main(int argc, char *argv[]) {
 //    aibeAlgo.block_decrypt();
 //    element_printf("%B\n", aibeAlgo.m);
 
+    for (int i = 0; i < data_len; ++i) {
+        data[i] = i / 10;
+    }
     printf("Please choose a function:\n"
            "1) key request\n"
            "2) key generation\n"
@@ -300,6 +321,9 @@ int main(int argc, char *argv[]) {
            "4) block_decrypt\n"
            "Please input a number:");
     scanf("%d", &mod);
+
+    clock_t start, end;
+    double sum;
 
     switch (mod) {
         case 1:
@@ -320,11 +344,13 @@ int main(int argc, char *argv[]) {
                 ret = -1;
                 goto CLEANUP;
             }
+
             if (remote_attestation(enclave_id, client) != SGX_SUCCESS) {
                 fprintf(OUTPUT, "Remote Attestation Error, Exit!\n");
                 ret = -1;
                 goto CLEANUP;
             }
+
             aibeAlgo.mpk_load();
             puts("Client: setup finished");
 ////    aibe: keygen
@@ -378,6 +404,251 @@ int main(int argc, char *argv[]) {
 
             break;
 
+        case 101:
+//            test of RA
+            fprintf(OUTPUT, "Start key generation\n");
+            // SOCKET: connect to server
+            if (client.client("127.0.0.1", pkg_port) != 0) {
+                fprintf(OUTPUT, "Connect Server Error, Exit!\n");
+                ret = -1;
+                goto CLEANUP;
+            }
+
+
+            sum = 0;
+            for (int i = 0; i < 100; ++i) {
+                start = clock();
+                if (remote_attestation(enclave_id, client) != SGX_SUCCESS) {
+                    fprintf(OUTPUT, "Remote Attestation Error, Exit!\n");
+                    ret = -1;
+                    goto CLEANUP;
+                }
+                end = clock();
+                ts[i] = end - start;
+                sum += ts[i];
+            }
+            printf("ra time(ms): %lf\n", double(sum) / CLOCKS_PER_SEC * 10);
+            for (int i = 0; i < 100; ++i) {
+                printf("%ld\n", ts[i]);
+            }
+            aibeAlgo.mpk_load();
+            puts("Client: setup finished");
+////    aibe: keygen
+            if (client_keygen(ID, aibeAlgo, enclave_id, OUTPUT, client)) {
+                fprintf(stderr, "Key verify failed\n");
+                goto CLEANUP;
+            }
+            aibeAlgo.dk_store();
+            fprintf(OUTPUT, "A-IBE Success Keygen \n");
+
+            break;
+        case 102:
+//            test of aes
+
+            enclave_use(enclave_id);
+            sum = 0;
+            for (int i = 0; i < 100; ++i) {
+                busy_retry_time = 4;
+                start = clock();
+                do {
+                    ret = enclave_encrypt(
+                            enclave_id,
+                            &status,
+                            data,
+                            data_len,
+                            output,
+                            mac);
+                } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
+
+                if (ret != SGX_SUCCESS) {
+                    puts("102 error");
+                    goto CLEANUP;
+                }
+
+                end = clock();
+                ts[i] = end - start;
+                sum += ts[i];
+            }
+            printf("SE Encrypt Time(μs): %lf\n" , double(sum) / 100);
+            for (int i = 0; i < 100; ++i) {
+                printf("%d\n", (int) ts[i]);
+            }
+
+            sum = 0;
+            for (int i = 0; i < 100; ++i) {
+                busy_retry_time = 4;
+                start = clock();
+                do {
+                    ret = enclave_encrypt(
+                            enclave_id,
+                            &status,
+                            output,
+                            data_len,
+                            data,
+                            mac);
+                } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
+
+
+                if (ret != SGX_SUCCESS) {
+                    puts("102 error");
+                    goto CLEANUP;
+                }
+
+                end = clock();
+                ts[i] = end - start;
+                sum += ts[i];
+            }
+            printf("SE Decrypt Time(μs): %lf\n" , double(sum) / 100);
+            for (int i = 0; i < 100; ++i) {
+                printf("%d\n", (int) ts[i]);
+            }
+            break;
+
+
+        case 103:
+            enclave_use(enclave_id);
+
+            sum = 0;
+            for (int i = 0; i < 100; ++i) {
+                start = clock();
+
+                ret = enclave_ecc_init(enclave_id,
+                                       &status,
+                                       &ecc_pri,
+                                       &ecc_pub,
+                                       &ecc_handle);
+
+                if (ret != SGX_SUCCESS && status != SGX_SUCCESS) {
+                    puts("103 error");
+                    goto CLEANUP;
+                }
+                end = clock();
+                ts[i] = end - start;
+                sum += ts[i];
+            }
+            printf("ECDSA Kgen Time(μs): %lf\n" , double(sum) / 100);
+            for (int i = 0; i < 100; ++i) {
+                printf("%d\n", (int) ts[i]);
+            }
+
+            sum = 0;
+            for (int i = 0; i < 100; ++i) {
+                start = clock();
+
+                ret = enclave_ecc_sign(enclave_id,
+                                 &status,
+                                 data,
+                                 data_len,
+                                 &ecc_pri,
+                                 &ecc_sig,
+                                 (uint8_t*) &ecc_handle);
+
+                if (ret != SGX_SUCCESS) {
+                    puts("103 error");
+                    goto CLEANUP;
+                }
+                end = clock();
+                ts[i] = end - start;
+                sum += ts[i];
+            }
+            printf("ECDSA Sign Time(μs): %lf\n" , double(sum) / 100);
+            for (int i = 0; i < 100; ++i) {
+                printf("%d\n", (int) ts[i]);
+            }
+
+            sum = 0;
+            for (int i = 0; i < 100; ++i) {
+                start = clock();
+
+                ret = enclave_ecc_verify(enclave_id,
+                                 &status,
+                                 data,
+                                 data_len,
+                                 &ecc_pub,
+                                 &ecc_sig,
+                                 &result,
+                                 (uint8_t*) &ecc_handle);
+
+                if (ret != SGX_SUCCESS) {
+                    puts("103 error");
+                    goto CLEANUP;
+                }
+
+                end = clock();
+                ts[i] = end - start;
+                sum += ts[i];
+            }
+            printf("ECDSA Verify Time(μs): %lf\n" , double(sum) / 100);
+            for (int i = 0; i < 100; ++i) {
+                printf("%d\n", (int) ts[i]);
+            }
+
+            break;
+
+        case 104:
+
+            enclave_ecc_init(enclave_id,
+                             &status,
+                             &ecc_pri,
+                             &ecc_pub,
+                             &ecc_handle);
+
+            sum = 0;
+
+            enclave_use(enclave_id);
+
+            for (int i = 0; i < 100; ++i) {
+                start = clock();
+
+                ret = enclave_ecc_sign(enclave_id,
+                                       &status,
+                                       data,
+                                       data_len,
+                                       &ecc_pri,
+                                       &ecc_sig,
+                                       (uint8_t*) &ecc_handle);
+
+                if (ret != SGX_SUCCESS) {
+                    puts("104 error");
+                    goto CLEANUP;
+                }
+                end = clock();
+                ts[i] = double(end - start);
+                sum += ts[i];
+            }
+            printf("ECC Decrypt Time(μs): %lf\n" , double(sum) / 100);
+            for (int i = 0; i < 100; ++i) {
+                printf("%d\n", (int) ts[i]);
+            }
+
+            sum = 0;
+            for (int i = 0; i < 100; ++i) {
+                start = clock();
+
+                ret = enclave_ecc_verify(enclave_id,
+                                         &status,
+                                         data,
+                                         data_len,
+                                         &ecc_pub,
+                                         &ecc_sig,
+                                         &result,
+                                         (uint8_t*) &ecc_handle);
+
+                if (ret != SGX_SUCCESS) {
+                    puts("104 error");
+                    goto CLEANUP;
+                }
+
+                end = clock();
+                ts[i] = double(end - start);
+                sum += ts[i];
+            }
+            printf("ECC Encrypt Time(μs): %lf\n" , double(sum) / 100);
+            for (int i = 0; i < 100; ++i) {
+                printf("%d\n", (int) ts[i]);
+            }
+
+            break;
         default:
             printf("Invalid function number, exit\n");
             goto CLEANUP;

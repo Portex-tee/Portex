@@ -432,3 +432,70 @@ sgx_status_t enclave_decrypt(
     } while(0);
     return ret;
 }
+
+sgx_status_t enclave_ecc_init(sgx_ec256_private_t *p_private,
+                                     sgx_ec256_public_t *p_public,
+                                     sgx_ecc_state_handle_t *ecc_handle) {
+    sgx_status_t ret = SGX_SUCCESS;
+    ret = sgx_ecc256_open_context(ecc_handle);
+    if (ret != SGX_SUCCESS) {
+        return ret;
+    }
+    return sgx_ecc256_create_key_pair(p_private,
+                                      p_public,
+                                      *ecc_handle);
+}
+
+sgx_status_t enclave_ecc_sign(uint8_t *p_data,
+                              uint32_t data_size,
+                              sgx_ec256_private_t *p_private,
+                              sgx_ec256_signature_t *p_signature,
+                              uint8_t *ecc_handle) {
+    sgx_status_t ret;
+    for (int i = 0; i < 1000; ++i) {
+        ret = sgx_ecdsa_sign(p_data,
+                             data_size,
+                             p_private,
+                             p_signature,
+                             ecc_handle);
+        if (ret != SGX_SUCCESS)
+            return ret;
+    }
+    return ret;
+}
+
+sgx_status_t enclave_ecc_verify(uint8_t *p_data,
+                                uint32_t data_size,
+                                sgx_ec256_public_t *p_public,
+                                sgx_ec256_signature_t *p_signature,
+                                uint8_t *p_result,
+                                uint8_t *ecc_handle){
+    sgx_status_t ret;
+    for (int i = 0; i < 1000; ++i) {
+        ret = sgx_ecdsa_verify(p_data,
+                               data_size,
+                               p_public,
+                               p_signature,
+                               p_result,
+                               ecc_handle);
+        if (ret != SGX_SUCCESS)
+            return ret;
+
+    }
+    return ret;
+}
+
+void enclave_use(){
+    int size = 50000000;
+    auto *a = (uint8_t *) malloc(size);
+    for (int i = 0; i < size; ++i) {
+        a[i] = 1;
+    }
+}
+
+//sgx_status_t enclave_rsa_init(){
+//    sgx_status_t ret = SGX_SUCCESS;
+//
+//
+//    return ret;
+//}

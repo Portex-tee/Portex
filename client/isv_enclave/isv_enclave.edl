@@ -58,5 +58,21 @@ enclave {
                                             uint32_t secret_size,
                                             [out,size=secret_size] uint8_t* out_data,
                                             [in,size=16] uint8_t* in_mac);
+
+        public sgx_status_t enclave_ecc_init([out,size=32] sgx_ec256_private_t *p_private,
+                                            [out,size=64] sgx_ec256_public_t *p_public,
+                                            [out,size=4] sgx_ecc_state_handle_t* ecc_handle);
+        public sgx_status_t enclave_ecc_sign([in,size=data_size] uint8_t* p_data,
+                                              uint32_t data_size,
+                                              [in,size=32] sgx_ec256_private_t *p_private,
+                                              [out,size=8] sgx_ec256_signature_t *p_signature,
+                                              [in,size=4] uint8_t* ecc_handle);
+        public sgx_status_t enclave_ecc_verify([in,size=data_size] uint8_t* p_data,
+                                              uint32_t data_size,
+                                              [in,size=64] sgx_ec256_public_t *p_public,
+                                              [out,size=8] sgx_ec256_signature_t *p_signature,
+                                              [out] uint8_t *p_result,
+                                              [in,size=4] uint8_t* ecc_handle);
+        public void enclave_use();
     };
 };

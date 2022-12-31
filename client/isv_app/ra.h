@@ -94,22 +94,22 @@ uint8_t *attestation_msg_samples[] =
 void PRINT_BYTE_ARRAY(
         FILE *file, void *mem, uint32_t len)
 {
-    if (!mem || !len)
-    {
-        fprintf(file, "\n( null )\n");
-        return;
-    }
-    uint8_t *array = (uint8_t *)mem;
-    fprintf(file, "%u bytes:\n{\n", len);
-    uint32_t i = 0;
-    for (i = 0; i < len - 1; i++)
-    {
-        fprintf(file, "0x%x, ", array[i]);
-        if (i % 8 == 7)
-            fprintf(file, "\n");
-    }
-    fprintf(file, "0x%x ", array[i]);
-    fprintf(file, "\n}\n");
+//    if (!mem || !len)
+//    {
+//        fprintf(file, "\n( null )\n");
+//        return;
+//    }
+//    uint8_t *array = (uint8_t *)mem;
+//    fprintf(file, "%u bytes:\n{\n", len);
+//    uint32_t i = 0;
+//    for (i = 0; i < len - 1; i++)
+//    {
+//        fprintf(file, "0x%x, ", array[i]);
+//        if (i % 8 == 7)
+//            fprintf(file, "\n");
+//    }
+//    fprintf(file, "0x%x ", array[i]);
+//    fprintf(file, "\n}\n");
 }
 
 void PRINT_ATTESTATION_SERVICE_RESPONSE(
@@ -344,8 +344,11 @@ int remote_attestation(sgx_enclave_id_t enclave_id, NetworkClient &client)
         p_msg1_full->size = sizeof(sgx_ra_msg1_t);
         do
         {
+            printf("retry time: %d\n", busy_retry_time);
             ret = sgx_ra_get_msg1(context, enclave_id, sgx_ra_get_ga,
                                   (sgx_ra_msg1_t *)((uint8_t *)p_msg1_full + sizeof(ra_samp_request_header_t)));
+            if (!(SGX_ERROR_BUSY == ret && busy_retry_time--))
+                break;
             sleep(3); // Wait 3s between retries
         } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
         if (SGX_SUCCESS != ret)

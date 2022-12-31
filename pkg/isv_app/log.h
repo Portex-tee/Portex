@@ -148,7 +148,7 @@ int LogTree::append(ChronTreeT::Hash hash, Proofs &prf) {
     prf.node = hash;
     chronTree.insert(hash);
     prf.root = chronTree.root();
-    prf.path = chronTree.path(chronTree.size() - 1);
+    prf.path = chronTree.path(chronTree.max_index());
     return ret;
 }
 

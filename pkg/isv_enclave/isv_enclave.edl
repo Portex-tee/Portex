@@ -34,15 +34,16 @@ enclave {
 
     include "sgx_key_exchange.h"
     include "sgx_trts.h"
+    include "sgx_tcrypto.h"
 
     trusted {
         public sgx_status_t enclave_init_ra(int b_pse,
                                             [out] sgx_ra_context_t *p_context);
         public sgx_status_t enclave_ra_close(sgx_ra_context_t context);
         public sgx_status_t verify_att_result_mac(sgx_ra_context_t context,
-                                                  [in,size=message_size] uint8_t* message, 
-                                                  size_t message_size, 
-                                                  [in,size=mac_size] uint8_t* mac, 
+                                                  [in,size=message_size] uint8_t* message,
+                                                  size_t message_size,
+                                                  [in,size=mac_size] uint8_t* mac,
                                                   size_t mac_size);
         public sgx_status_t put_secret_data([in,size=16] uint8_t *secret);
         public sgx_status_t enclave_encrypt([in,size=secret_size] uint8_t* p_data,
@@ -53,10 +54,27 @@ enclave {
                                             uint32_t secret_size,
                                             [out,size=secret_size] uint8_t* out_data,
                                             [in,size=16] uint8_t* in_mac);
-        public sgx_status_t enclave_update([in,size=secret_size] uint8_t* p_data,
-                                            uint32_t secret_size,
-                                            [out,size=secret_size] uint8_t* out_data,
-                                            [in,size=16] uint8_t* in_mac);
-    };
+        public sgx_status_t enclave_init(uint32_t lambda,
+                                            uint32_t mpk_size,
+                                            [out,size=mpk_size] uint8_t* mpk,
+                                            [out,size=SGX_RSA3072_PUB_KEY_SIZE] uint8_t* vk);
+        public sgx_status_t enclave_keyreq([in, size=16] uint8_t *pk_c,
+                                            [in, size=prf_size] uint8_t *proof,
+                                            uint32_t prf_size,
+                                            [in, size=node_size] uint8_t *node,
+                                            uint32_t node_size,
+                                            [in, size=ir_size] uint8_t *ir,
+                                            uint32_t ir_size,
+                                            [in, size=SGX_RSA3072_KEY_SIZE] uint8_t *sig_ir,
+                                            [out, size=ir_size] uint8_t *ct_oc,
+                                            [out] uint32_t *ct_size);
 
+        public sgx_status_t enclave_keygen([in, size=16] uint8_t *pk_c,
+                                            [in, size=oc_size] uint8_t *oc,
+                                            uint32_t oc_size,
+                                            [in, size=r_size] uint8_t *r,
+                                            uint32_t r_size,
+                                            [out, size=d_size] uint8_t *ct_d_prime,
+                                            uint32_t d_size);
+    };
 };

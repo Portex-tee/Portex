@@ -632,7 +632,7 @@ void data_xor(uint8_t *out, const uint8_t *d1, const uint8_t *d2, int size) {
     for (int i = 0; i < size; ++i) {
         buffer[i] = d1[i] ^ d2[i];
     }
-    memcpy_s(out, size, buffer, size);
+    memcpy(out, buffer, size);
 }
 
 #endif //PBC_TEST_AIBE_H
