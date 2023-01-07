@@ -62,7 +62,7 @@
 
 #include "aibe.h"
 
-#define LENOFMSE 1024
+#define LENOFMSE 10240
 
 #ifndef SAFE_FREE
 #define SAFE_FREE(ptr)     \

@@ -77,6 +77,15 @@
 
 #define LENOFMSE 1024
 
+#define debug_enable (0)  //1---open   0---close
+
+#define DBG(...) if(debug_enable)(fprintf(__VA_ARGS__))
+#define ELE_DBG(...) if(debug_enable)(element_fprintf(__VA_ARGS__))
+
+
+int rbits = 160;
+int qbits = (1 << 10); // lambda
+
 uint8_t *msg1_samples[] = {msg1_sample1, msg1_sample2};
 uint8_t *msg2_samples[] = {msg2_sample1, msg2_sample2};
 uint8_t *msg3_samples[] = {msg3_sample1, msg3_sample2};
@@ -85,78 +94,77 @@ uint8_t *attestation_msg_samples[] =
 
 // Some utility functions to output some of the data structures passed between
 // the ISV app and the remote attestation service provider.
-void PRINT_BYTE_ARRAY(
-        FILE *file, void *mem, uint32_t len) {
+void PRINT_BYTE_ARRAY(FILE *file, void *mem, uint32_t len) {
     if (!mem || !len) {
-        fprintf(file, "\n( null )\n");
+        DBG(file, "\n( null )\n");
         return;
     }
     uint8_t *array = (uint8_t *) mem;
-    fprintf(file, "%u bytes:\n{\n", len);
+    DBG(file, "%u bytes:\n{\n", len);
     uint32_t i = 0;
     for (i = 0; i < len - 1; i++) {
-        fprintf(file, "0x%x, ", array[i]);
+        DBG(file, "0x%x, ", array[i]);
         if (i % 8 == 7)
-            fprintf(file, "\n");
+            DBG(file, "\n");
     }
-    fprintf(file, "0x%x ", array[i]);
-    fprintf(file, "\n}\n");
+    DBG(file, "0x%x ", array[i]);
+    DBG(file, "\n}\n");
 }
 
 void PRINT_ATTESTATION_SERVICE_RESPONSE(
         FILE *file,
         ra_samp_response_header_t *response) {
     if (!response) {
-        fprintf(file, "\t\n( null )\n");
+        DBG(file, "\t\n( null )\n");
         return;
     }
 
-    fprintf(file, "RESPONSE TYPE:   0x%x\n", response->type);
-    fprintf(file, "RESPONSE STATUS: 0x%x 0x%x\n", response->status[0],
+    DBG(file, "RESPONSE TYPE:   0x%x\n", response->type);
+    DBG(file, "RESPONSE STATUS: 0x%x 0x%x\n", response->status[0],
             response->status[1]);
-    fprintf(file, "RESPONSE BODY SIZE: %u\n", response->size);
+    DBG(file, "RESPONSE BODY SIZE: %u\n", response->size);
 
     if (response->type == TYPE_RA_MSG2) {
         sgx_ra_msg2_t *p_msg2_body = (sgx_ra_msg2_t *) (response->body);
 
-        fprintf(file, "MSG2 gb - ");
+        DBG(file, "MSG2 gb - ");
         PRINT_BYTE_ARRAY(file, &(p_msg2_body->g_b), sizeof(p_msg2_body->g_b));
 
-        fprintf(file, "MSG2 spid - ");
+        DBG(file, "MSG2 spid - ");
         PRINT_BYTE_ARRAY(file, &(p_msg2_body->spid), sizeof(p_msg2_body->spid));
 
-        fprintf(file, "MSG2 quote_type : %hx\n", p_msg2_body->quote_type);
+        DBG(file, "MSG2 quote_type : %hx\n", p_msg2_body->quote_type);
 
-        fprintf(file, "MSG2 kdf_id : %hx\n", p_msg2_body->kdf_id);
+        DBG(file, "MSG2 kdf_id : %hx\n", p_msg2_body->kdf_id);
 
-        fprintf(file, "MSG2 sign_gb_ga - ");
+        DBG(file, "MSG2 sign_gb_ga - ");
         PRINT_BYTE_ARRAY(file, &(p_msg2_body->sign_gb_ga),
                          sizeof(p_msg2_body->sign_gb_ga));
 
-        fprintf(file, "MSG2 mac - ");
+        DBG(file, "MSG2 mac - ");
         PRINT_BYTE_ARRAY(file, &(p_msg2_body->mac), sizeof(p_msg2_body->mac));
 
-        fprintf(file, "MSG2 sig_rl - ");
+        DBG(file, "MSG2 sig_rl - ");
         PRINT_BYTE_ARRAY(file, &(p_msg2_body->sig_rl),
                          p_msg2_body->sig_rl_size);
     } else if (response->type == TYPE_RA_ATT_RESULT) {
         sample_ra_att_result_msg_t *p_att_result =
                 (sample_ra_att_result_msg_t *) (response->body);
-        fprintf(file, "ATTESTATION RESULT MSG platform_info_blob - ");
+        DBG(file, "ATTESTATION RESULT MSG platform_info_blob - ");
         PRINT_BYTE_ARRAY(file, &(p_att_result->platform_info_blob),
                          sizeof(p_att_result->platform_info_blob));
 
-        fprintf(file, "ATTESTATION RESULT MSG mac - ");
+        DBG(file, "ATTESTATION RESULT MSG mac - ");
         PRINT_BYTE_ARRAY(file, &(p_att_result->mac), sizeof(p_att_result->mac));
 
-        fprintf(file, "ATTESTATION RESULT MSG secret.payload_tag - %u bytes\n",
+        DBG(file, "ATTESTATION RESULT MSG secret.payload_tag - %u bytes\n",
                 p_att_result->secret.payload_size);
 
-        fprintf(file, "ATTESTATION RESULT MSG secret.payload - ");
+        DBG(file, "ATTESTATION RESULT MSG secret.payload - ");
         PRINT_BYTE_ARRAY(file, p_att_result->secret.payload,
                          p_att_result->secret.payload_size);
     } else {
-        fprintf(file, "\nERROR in printing out the response. "
+        DBG(file, "\nERROR in printing out the response. "
                       "Response of type not supported %d\n",
                 response->type);
     }
@@ -191,16 +199,16 @@ int myaesencrypt(const ra_samp_request_header_t *p_msgenc,
                 data_size,
                 out_data,
                 mac);
-        fprintf(stdout, "\nE %d %d", id, *status);
+        DBG(stdout, "\nE %d %d", id, *status);
     } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
-    fprintf(stdout, "\nData of Encrypt is\n");
+    DBG(stdout, "\nData of Encrypt is\n");
     PRINT_BYTE_ARRAY(stdout, p_data, data_size);
-    fprintf(stdout, "\nData of Encrypted and mac is\n");
+    DBG(stdout, "\nData of Encrypted and mac is\n");
     PRINT_BYTE_ARRAY(stdout, out_data, data_size);
     PRINT_BYTE_ARRAY(stdout, mac, SGX_AESGCM_MAC_SIZE);
     p_msg2_full = (ra_samp_response_header_t *) malloc(msg2_size + sizeof(ra_samp_response_header_t));
     if (!p_msg2_full) {
-        fprintf(stderr, "\nError, out of memory in [%s]-[%d].", __FUNCTION__, __LINE__);
+        DBG(stderr, "\nError, out of memory in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
@@ -211,27 +219,27 @@ int myaesencrypt(const ra_samp_request_header_t *p_msgenc,
     p_msg2_full->status[1] = 0;
 
     if (memcpy_s(p_msg2_full->body, data_size, out_data, data_size)) {
-        fprintf(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
+        DBG(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
     if (memcpy_s(p_msg2_full->body + data_size, SGX_AESGCM_MAC_SIZE, mac, SGX_AESGCM_MAC_SIZE)) {
-        fprintf(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
+        DBG(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
-    memset(server.sendbuf, 0, BUFSIZ);
+    memset(server.sendbuf, 0, BUFFER_SIZE);
     if (memcpy_s(server.sendbuf,
                  msg2_size + sizeof(ra_samp_response_header_t),
                  p_msg2_full,
                  msg2_size + sizeof(ra_samp_response_header_t))) {
-        fprintf(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
+        DBG(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
 
     if (server.SendTo(msg2_size + sizeof(ra_samp_response_header_t)) < 0) {
-        fprintf(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
+        DBG(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
@@ -252,7 +260,7 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
     }
     sgx_aes_gcm_128bit_tag_t mac;
     int ret = 0;
-    fprintf(stdout, "\nD %d %d", id, *status);
+    DBG(stdout, "\nD %d %d", id, *status);
     int busy_retry_time = 4;
     uint8_t p_data[LENOFMSE] = {0};
     uint8_t out_data[LENOFMSE] = {0};
@@ -260,7 +268,7 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
     uint8_t data_size = msg_size - SGX_AESGCM_MAC_SIZE;
     uint8_t msg2_size = data_size;
 
-    printf("====%d %d\n", data_size, msg_size);
+    DBG(stdout, "====%d %d\n", data_size, msg_size);
     PRINT_BYTE_ARRAY(stdout, (uint8_t *) p_msgenc, msg_size);
 
     memcpy_s(p_data, msg_size, p_msgenc, msg_size);
@@ -276,15 +284,15 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
     } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
     if (ret != SGX_SUCCESS)
         return ret;
-    fprintf(stdout, "\nData of Decrypt and mac is\n");
+    DBG(stdout, "\nData of Decrypt and mac is\n");
     PRINT_BYTE_ARRAY(stdout, p_data, data_size);
     PRINT_BYTE_ARRAY(stdout, mac, SGX_AESGCM_MAC_SIZE);
-    fprintf(stdout, "\nData of Decrypted is\n");
+    DBG(stdout, "\nData of Decrypted is\n");
     PRINT_BYTE_ARRAY(stdout, out_data, data_size);
 
     p_msg2_full = (ra_samp_response_header_t *) malloc(msg2_size + sizeof(ra_samp_response_header_t));
     if (!p_msg2_full) {
-        fprintf(stderr, "\nError, out of memory in [%s]-[%d].", __FUNCTION__, __LINE__);
+        DBG(stderr, "\nError, out of memory in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
@@ -297,27 +305,27 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
     p_msg2_full->status[1] = 0;
 
     if (memcpy_s(&p_msg2_full->body[0], msg2_size, &out_data[0], msg2_size)) {
-        fprintf(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
+        DBG(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
-    memset(server.sendbuf, 0, BUFSIZ);
+    memset(server.sendbuf, 0, BUFFER_SIZE);
     if (memcpy_s(server.sendbuf,
                  msg2_size + sizeof(ra_samp_response_header_t),
                  p_msg2_full,
                  msg2_size + sizeof(ra_samp_response_header_t))) {
-        fprintf(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
+        DBG(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
 
     if (server.SendTo(msg2_size + sizeof(ra_samp_response_header_t)) < 0) {
-        fprintf(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
+        DBG(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
     SAFE_FREE(p_msg2_full);
-    fprintf(stdout, "\nSend Decrypt Data Done.");
+    DBG(stdout, "\nSend Decrypt Data Done.");
     return ret;
 }
 
@@ -338,7 +346,7 @@ int pkg_keygen(const ra_samp_request_header_t *p_msg,
     uint8_t p_data[LENOFMSE] = {0};
     uint8_t out_data[LENOFMSE] = {0};
     ra_samp_response_header_t *p_msg2_full = NULL;
-    uint8_t data_size = msg_size - SGX_AESGCM_MAC_SIZE;
+    uint32_t data_size = msg_size - SGX_AESGCM_MAC_SIZE;
 
     memcpy_s(p_data, msg_size, p_msg, msg_size);
     memcpy_s(mac, SGX_AESGCM_MAC_SIZE, p_data + data_size, SGX_AESGCM_MAC_SIZE);
@@ -353,7 +361,8 @@ int pkg_keygen(const ra_samp_request_header_t *p_msg,
     } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
     if (ret != SGX_SUCCESS)
         return ret;
-//    fprintf(stdout, "\nData of Encrypted R and its MAC is\n");
+//    std::cout << "data_size and msg_size are " << data_size << " and " << (int)msg_size << std::endl;
+//    DBG(stdout, "\nData of Encrypted R and its MAC is\n");
 //    PRINT_BYTE_ARRAY(stdout, p_data, data_size);
 //    PRINT_BYTE_ARRAY(stdout, mac, SGX_AESGCM_MAC_SIZE);
 
@@ -361,18 +370,18 @@ int pkg_keygen(const ra_samp_request_header_t *p_msg,
     element_from_bytes_compressed(aibeAlgo.Hz, out_data + aibeAlgo.size_comp_G1);
 
     {
-        fprintf(stdout, "\nData of Hz and R is\n");
-        element_fprintf(stdout, "Hz: %B\n", aibeAlgo.Hz);
-        element_fprintf(stdout, "R: %B\n", aibeAlgo.R);
+        DBG(stdout, "\nData of Hz and R is\n");
+        ELE_DBG(stdout, "Hz: %B\n", aibeAlgo.Hz);
+        ELE_DBG(stdout, "R: %B\n", aibeAlgo.R);
     }
 
     aibeAlgo.keygen2();
 
     {
-        fprintf(stdout, "\nData of dk' is\n");
-        element_fprintf(stdout, "dk'.d1: %B\n", aibeAlgo.dk1.d1);
-        element_fprintf(stdout, "dk'.d2: %B\n", aibeAlgo.dk1.d2);
-        element_fprintf(stdout, "dk'.d3: %B\n", aibeAlgo.dk1.d3);
+        DBG(stdout, "\nData of dk' is\n");
+        ELE_DBG(stdout, "dk'.d1: %B\n", aibeAlgo.dk1.d1);
+        ELE_DBG(stdout, "dk'.d2: %B\n", aibeAlgo.dk1.d2);
+        ELE_DBG(stdout, "dk'.d3: %B\n", aibeAlgo.dk1.d3);
     }
 
     busy_retry_time = 4;
@@ -388,15 +397,15 @@ int pkg_keygen(const ra_samp_request_header_t *p_msg,
                 mac);
     } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
 
-//    fprintf(stdout, "\nData of Encrypt is\n");
+//    DBG(stdout, "\nData of Encrypt is\n");
 //    PRINT_BYTE_ARRAY(stdout, p_data, data_size);
-//    fprintf(stdout, "\nData of Encrypted and mac is\n");
+//    DBG(stdout, "\nData of Encrypted and mac is\n");
 //    PRINT_BYTE_ARRAY(stdout, out_data, data_size);
 //    PRINT_BYTE_ARRAY(stdout, mac, SGX_AESGCM_MAC_SIZE);
 
     p_msg2_full = (ra_samp_response_header_t *) malloc(msg2_size + sizeof(ra_samp_response_header_t));
     if (!p_msg2_full) {
-        fprintf(stderr, "\nError, out of memory in [%s]-[%d].", __FUNCTION__, __LINE__);
+        DBG(stderr, "\nError, out of memory in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
@@ -407,33 +416,33 @@ int pkg_keygen(const ra_samp_request_header_t *p_msg,
     p_msg2_full->status[1] = 0;
 
     if (memcpy_s(p_msg2_full->body, data_size, out_data, data_size)) {
-        fprintf(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
+        DBG(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
     if (memcpy_s(p_msg2_full->body + data_size, SGX_AESGCM_MAC_SIZE, mac, SGX_AESGCM_MAC_SIZE)) {
-        fprintf(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
+        DBG(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
-    memset(server.sendbuf, 0, BUFSIZ);
+    memset(server.sendbuf, 0, BUFFER_SIZE);
     if (memcpy_s(server.sendbuf,
                  msg2_size + sizeof(ra_samp_response_header_t),
                  p_msg2_full,
                  msg2_size + sizeof(ra_samp_response_header_t))) {
-        fprintf(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
+        DBG(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
 
     if (server.SendTo(msg2_size + sizeof(ra_samp_response_header_t)) < 0) {
-        fprintf(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
+        DBG(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
 
     SAFE_FREE(p_msg2_full);
-    fprintf(stdout, "\nKeygen2 Done.");
+    DBG(stdout, "\nKeygen2 Done.");
     return ret;
 }
 
@@ -444,28 +453,28 @@ int pkg_keyreq(const ra_samp_request_header_t *p_msg,
                sgx_status_t *status,
                NetworkServer &server) {
     if (!p_msg ||
-        (msg_size > BUFSIZ)) {
+        (msg_size > BUFFER_SIZE)) {
         return -1;
     }
     int ret = 0;
-    uint8_t data[BUFSIZ];
+    uint8_t data[BUFFER_SIZE];
     Proofs proofs;
     int msg2_size;
     ra_samp_response_header_t *p_response = NULL;
 
     memcpy_s(data, msg_size, p_msg, msg_size);
-    puts("\nstart deserialise");
+    DBG(stderr, "\nstart deserialise");
     proofs.deserialise(data);
     if (!proofs.verify_proofs()) {
-        fprintf(stderr, "\nProofs verify failed.");
+        DBG(stderr, "\nProofs verify failed.");
     }
 
-    fprintf(stderr, "\nProofs verify succeed.");
+    DBG(stderr, "\nProofs verify succeed.");
 
     msg2_size = 0;
     p_response = (ra_samp_response_header_t *) malloc(msg2_size + sizeof(ra_samp_response_header_t));
     if (!p_response) {
-        fprintf(stderr, "\nError, out of memory in [%s]-[%d].", __FUNCTION__, __LINE__);
+        DBG(stderr, "\nError, out of memory in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
@@ -476,23 +485,23 @@ int pkg_keyreq(const ra_samp_request_header_t *p_msg,
     p_response->status[1] = 0;
 
 
-    memset(server.sendbuf, 0, BUFSIZ);
+    memset(server.sendbuf, 0, BUFFER_SIZE);
     if (memcpy_s(server.sendbuf,
                  msg2_size + sizeof(ra_samp_response_header_t),
                  p_response,
                  msg2_size + sizeof(ra_samp_response_header_t))) {
-        fprintf(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
+        DBG(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
 
     if (server.SendTo(msg2_size + sizeof(ra_samp_response_header_t)) < 0) {
-        fprintf(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
+        DBG(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
 
-    fprintf(stdout, "\nKeyreq Done.");
+    DBG(stdout, "\nKeyreq Done.");
     return ret;
 }
 
@@ -531,10 +540,37 @@ int main(int argc, char *argv[]) {
     int buflen = 0;
     uint32_t extended_epid_group_id = 0;
 
+
+    {
+        const char client_path[] = "../client/param/aibe.param";
+
+        FILE *file_pkg = fopen(param_path, "w+");
+        FILE *file_client = fopen(client_path, "w+");
+
+        pbc_param_t p;
+        pbc_param_init_a_gen(p, rbits, qbits);
+        pbc_param_out_str(file_pkg, p);
+        pbc_param_out_str(file_client, p);
+
+        fclose(file_pkg);
+        fclose(file_client);
+    }
+
     aibeAlgo.load_param(param_path);
     puts("param loaded");
     aibeAlgo.init();
     puts("init");
+
+    aibeAlgo.pkg_setup_generate();
+
+    {
+//        copy mpk to client
+        const char client_mpk_path[] = "../client/param/mpk.out";
+        char buff[256];
+        sprintf(buff, "cp %s %s", mpk_path, client_mpk_path);
+        system(buff);
+    }
+
     aibeAlgo.mpk_load();
     aibeAlgo.msk_load();
     puts("mpk loaded");
@@ -546,11 +582,11 @@ int main(int argc, char *argv[]) {
         ret = sgx_get_extended_epid_group_id(&extended_epid_group_id);
         if (SGX_SUCCESS != ret) {
             ret = -1;
-            fprintf(OUTPUT, "\nError, call sgx_get_extended_epid_group_id fail [%s].",
+            DBG(OUTPUT, "\nError, call sgx_get_extended_epid_group_id fail [%s].",
                     __FUNCTION__);
             return ret;
         }
-        fprintf(OUTPUT, "\nCall sgx_get_extended_epid_group_id success.");
+        DBG(OUTPUT, "\nCall sgx_get_extended_epid_group_id success.");
 
         int launch_token_update = 0;
         sgx_launch_token_t launch_token = {0};
@@ -563,11 +599,11 @@ int main(int argc, char *argv[]) {
                                      &enclave_id, NULL);
             if (SGX_SUCCESS != ret) {
                 ret = -1;
-                fprintf(OUTPUT, "\nError, call sgx_create_enclave fail [%s].",
+                DBG(OUTPUT, "\nError, call sgx_create_enclave fail [%s].",
                         __FUNCTION__);
                 goto CLEANUP;
             }
-            fprintf(OUTPUT, "\nCall sgx_create_enclave success.");
+            DBG(OUTPUT, "\nCall sgx_create_enclave success.");
 
             ret = enclave_init_ra(enclave_id,
                                   &status,
@@ -578,15 +614,15 @@ int main(int argc, char *argv[]) {
 
         if (SGX_SUCCESS != ret || status) {
             ret = -1;
-            fprintf(OUTPUT, "\nError, call enclave_init_ra fail [%s].",
+            DBG(OUTPUT, "\nError, call enclave_init_ra fail [%s].",
                     __FUNCTION__);
             goto CLEANUP;
         }
-        fprintf(OUTPUT, "\nCall enclave_init_ra success.");
+        DBG(OUTPUT, "\nCall enclave_init_ra success.");
     }
 
     //服务进程，对接受的数据进行响应
-    fprintf(OUTPUT, "\nstart socket....");
+    DBG(OUTPUT, "\nstart socket....");
     server.server(server_port);
 
     //如果接受的信息类型为服务类型，就解析
@@ -595,75 +631,75 @@ int main(int argc, char *argv[]) {
         do {
             //阻塞调用socket
             buflen = server.RecvFrom();
-            if (buflen > 0 && buflen < BUFSIZ) {
+            if (buflen > 0 && buflen < BUFFER_SIZE) {
                 p_req = (ra_samp_request_header_t *) malloc(buflen + 2);
 
-                fprintf(OUTPUT, "\nPrepare receive struct");
+                DBG(OUTPUT, "\nPrepare receive struct");
                 if (NULL == p_req) {
                     ret = -1;
                     goto CLEANUP;
                 }
                 if (memcpy_s(p_req, buflen + 2, server.recvbuf, buflen)) {
-                    fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s].",
+                    DBG(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s].",
                             __FUNCTION__);
                     ret = -1;
                     goto CLEANUP;
                 }
-                fprintf(OUTPUT, "\nrequest type is %d", p_req->type);
+                DBG(OUTPUT, "\nrequest type is %d", p_req->type);
                 switch (p_req->type) {
                     case TYPE_EXIT:
-                        fprintf(OUTPUT, "\nConnection terminated");
+                        DBG(OUTPUT, "\nConnection terminated");
                         SAFE_FREE(p_req);
                         is_recv = false;
                         break;
                         //收取msg1，进行验证并返回msg2
                     //收取msg0，进行验证
                     case TYPE_RA_MSG0:
-                        fprintf(OUTPUT, "\nProcess Message 0");
+                        DBG(OUTPUT, "\nProcess Message 0");
                         ret = sp_ra_proc_msg0_req(
                                 (const sample_ra_msg0_t *) ((uint8_t *) p_req + sizeof(ra_samp_request_header_t)),
                                 p_req->size);
-                        fprintf(OUTPUT, "\nProcess Message 0 Done");
+                        DBG(OUTPUT, "\nProcess Message 0 Done");
                         if (0 != ret) {
-                            fprintf(stderr, "\nError, call sp_ra_proc_msg1_req fail [%s].",
+                            DBG(stderr, "\nError, call sp_ra_proc_msg1_req fail [%s].",
                                     __FUNCTION__);
                         }
                         SAFE_FREE(p_req);
                         break;
                         //收取msg1，进行验证并返回msg2
                     case TYPE_RA_MSG1:
-                        fprintf(OUTPUT, "\nBuffer length is %d\n", buflen);
+                        DBG(OUTPUT, "\nBuffer length is %d\n", buflen);
                         p_resp_msg = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t) + 170);//简化处理
                         memset(p_resp_msg, 0, sizeof(ra_samp_response_header_t) + 170);
-                        fprintf(OUTPUT, "\nProcess Message 1\n");
+                        DBG(OUTPUT, "\nProcess Message 1\n");
                         ret = sp_ra_proc_msg1_req(
                                 (const sample_ra_msg1_t *) ((uint8_t *) p_req + sizeof(ra_samp_request_header_t)),
                                 p_req->size,
                                 &p_resp_msg);
-                        fprintf(OUTPUT, "\nProcess Message 1 Done");
+                        DBG(OUTPUT, "\nProcess Message 1 Done");
                         if (0 != ret) {
-                            fprintf(stderr, "\nError, call sp_ra_proc_msg1_req fail [%s].",
+                            DBG(stderr, "\nError, call sp_ra_proc_msg1_req fail [%s].",
                                     __FUNCTION__);
                         } else {
-                            memset(server.sendbuf, 0, BUFSIZ);
-                            if (memcpy_s(server.sendbuf, BUFSIZ, p_resp_msg,
+                            memset(server.sendbuf, 0, BUFFER_SIZE);
+                            if (memcpy_s(server.sendbuf, BUFFER_SIZE, p_resp_msg,
                                          sizeof(ra_samp_response_header_t) + p_resp_msg->size)) {
-                                fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s].",
+                                DBG(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s].",
                                         __FUNCTION__);
                                 ret = -1;
                                 goto CLEANUP;
                             }
-                            fprintf(OUTPUT, "\nSend Message 2\n");
+                            DBG(OUTPUT, "\nSend Message 2\n");
                             PRINT_BYTE_ARRAY(OUTPUT, p_resp_msg, 176);
                             int buflen = server.SendTo(sizeof(ra_samp_response_header_t) + p_resp_msg->size);
-                            fprintf(OUTPUT, "\nSend Message 2 Done,send length = %d", buflen);
+                            DBG(OUTPUT, "\nSend Message 2 Done,send length = %d", buflen);
                         }
                         SAFE_FREE(p_req);
                         SAFE_FREE(p_resp_msg);
                         break;
                         //收取msg3，返回attestation result
                     case TYPE_RA_MSG3:
-                        fprintf(OUTPUT, "\nProcess Message 3");
+                        DBG(OUTPUT, "\nProcess Message 3");
                         p_resp_msg = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t) + 200);//简化处理
                         memset(p_resp_msg, 0, sizeof(ra_samp_response_header_t) + 200);
                         ret = sp_ra_proc_msg3_req((const sample_ra_msg3_t *) ((uint8_t *) p_req +
@@ -671,21 +707,21 @@ int main(int argc, char *argv[]) {
                                                   p_req->size,
                                                   &p_resp_msg);
                         if (0 != ret) {
-                            fprintf(stderr, "\nError, call sp_ra_proc_msg3_req fail [%s].",
+                            DBG(stderr, "\nError, call sp_ra_proc_msg3_req fail [%s].",
                                     __FUNCTION__);
                         } else {
-                            memset(server.sendbuf, 0, BUFSIZ);
-                            if (memcpy_s(server.sendbuf, BUFSIZ, p_resp_msg,
+                            memset(server.sendbuf, 0, BUFFER_SIZE);
+                            if (memcpy_s(server.sendbuf, BUFFER_SIZE, p_resp_msg,
                                          sizeof(ra_samp_response_header_t) + p_resp_msg->size)) {
-                                fprintf(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s].",
+                                DBG(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s].",
                                         __FUNCTION__);
                                 ret = -1;
                                 goto CLEANUP;
                             }
-                            fprintf(OUTPUT, "\nSend attestation data\n");
+                            DBG(OUTPUT, "\nSend attestation data\n");
                             PRINT_BYTE_ARRAY(OUTPUT, p_resp_msg, sizeof(ra_samp_response_header_t) + p_resp_msg->size);
                             int buflen = server.SendTo(sizeof(ra_samp_response_header_t) + p_resp_msg->size);
-                            fprintf(OUTPUT, "\nSend attestation data Done,send length = %d", buflen);
+                            DBG(OUTPUT, "\nSend attestation data Done,send length = %d", buflen);
                         }
 
                         {
@@ -701,7 +737,7 @@ int main(int argc, char *argv[]) {
                         SAFE_FREE(p_resp_msg);
                         break;
                     case TYPE_RA_KEYGEN:
-                        fprintf(OUTPUT, "\nProcess Keygen");
+                        DBG(OUTPUT, "\nProcess Keygen");
                         ret = pkg_keygen((const ra_samp_request_header_t *) ((uint8_t *) p_req +
                                                                              sizeof(ra_samp_request_header_t)),
                                          p_req->size,
@@ -709,25 +745,25 @@ int main(int argc, char *argv[]) {
                                          &status,
                                          aibeAlgo,
                                          server);
-                        fprintf(OUTPUT, "\nKeygen2 Done %d %d", enclave_id, status);
+                        DBG(OUTPUT, "\nKeygen2 Done %d %d", enclave_id, status);
                         if (0 != ret) {
-                            fprintf(stderr, "\nError, call keygen fail [%s].",
+                            DBG(stderr, "\nError, call keygen fail [%s].",
                                     __FUNCTION__);
                         }
                         SAFE_FREE(p_req);
                         is_recv = false;
                         break;
                     case TYPE_RA_KEYREQ:
-                        fprintf(OUTPUT, "\nProcess Keyreq");
+                        DBG(OUTPUT, "\nProcess Keyreq");
                         ret = pkg_keyreq((const ra_samp_request_header_t *) ((uint8_t *) p_req +
                                                                              sizeof(ra_samp_request_header_t)),
                                          p_req->size,
                                          enclave_id,
                                          &status,
                                          server);
-                        fprintf(OUTPUT, "\nKeyreq Done %d %d", enclave_id, status);
+                        DBG(OUTPUT, "\nKeyreq Done %d %d", enclave_id, status);
                         if (0 != ret) {
-                            fprintf(stderr, "\nError, call keyreq fail [%s].",
+                            DBG(stderr, "\nError, call keyreq fail [%s].",
                                     __FUNCTION__);
                         }
                         SAFE_FREE(p_req);
@@ -736,7 +772,7 @@ int main(int argc, char *argv[]) {
 
                     default:
                         ret = -1;
-                        fprintf(stderr, "\nError, unknown ra message type. Type = %d [%s].",
+                        DBG(stderr, "\nError, unknown ra message type. Type = %d [%s].",
                                 p_req->type, __FUNCTION__);
                         goto CLEANUP;
                 }
@@ -745,7 +781,7 @@ int main(int argc, char *argv[]) {
 
         ret = server.accept_client();
         if (ret) {
-            fprintf(OUTPUT, "\nAccept failed.");
+            DBG(OUTPUT, "\nAccept failed.");
             goto CLEANUP;
         }
 
@@ -762,14 +798,14 @@ int main(int argc, char *argv[]) {
         ret = enclave_ra_close(enclave_id, &status, context);
         if (SGX_SUCCESS != ret || status) {
             ret = -1;
-            fprintf(OUTPUT, "\nError, call enclave_ra_close fail [%s].",
+            DBG(OUTPUT, "\nError, call enclave_ra_close fail [%s].",
                     __FUNCTION__);
         } else {
             // enclave_ra_close was successful, let's restore the value that
             // led us to this point in the code.
             ret = ret_save;
         }
-        fprintf(OUTPUT, "\nCall enclave_ra_close success.");
+        DBG(OUTPUT, "\nCall enclave_ra_close success.");
     }
 
     sgx_destroy_enclave(enclave_id);

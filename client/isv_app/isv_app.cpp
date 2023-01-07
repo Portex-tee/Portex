@@ -32,6 +32,7 @@
 // This sample is confined to the communication between a SGX client platform
 // and an ISV Application Server.
 
+#include <iostream>
 #include <ctime>
 #include "ra.h"
 #include <stdio.h>
@@ -82,8 +83,14 @@
 
 #define ENCLAVE_PATH "isv_enclave.signed.so"
 
+#define debug_enable (0)  //1---open   0---close
 
-int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT, NetworkClient client) {
+#define DBG(...) if(debug_enable)(fprintf(__VA_ARGS__))
+#define ELE_DBG(...) if(debug_enable)(element_fprintf(__VA_ARGS__))
+
+FILE *OUTPUT = stdout;
+
+int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT, NetworkClient client, double &time) {
     int ret = 0;
     sgx_status_t status = SGX_SUCCESS;
     ra_samp_request_header_t *p_request = NULL;
@@ -92,8 +99,12 @@ int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *
     int busy_retry_time;
     int data_size;
     int msg_size;
+    
+//    test
+    clock_t st, et;
 
     uint8_t p_data[LENOFMSE] = {0};
+    uint8_t p2_data[LENOFMSE] = {0};
     uint8_t out_data[LENOFMSE] = {0};
     sgx_aes_gcm_128bit_tag_t mac;
 
@@ -104,8 +115,11 @@ int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *
     element_to_bytes_compressed(p_data, aibeAlgo.R);
     element_to_bytes_compressed(p_data + aibeAlgo.size_comp_G1, aibeAlgo.Hz);
     ra_encrypt(p_data, data_size, out_data, mac, enclave_id, OUTPUT);
+    DBG(stdout, "\nData of Encrypted R and its MAC is\n");
+    PRINT_BYTE_ARRAY(stdout, out_data, data_size);
+    PRINT_BYTE_ARRAY(stdout, mac, SGX_AESGCM_MAC_SIZE);
 
-    element_fprintf(OUTPUT, "Send R:\n%B", aibeAlgo.R);
+    ELE_DBG(OUTPUT, "Send R:\n%B", aibeAlgo.R);
 
     msg_size = data_size + SGX_AESGCM_MAC_SIZE;
     p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);
@@ -113,20 +127,22 @@ int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *
     p_request->type = TYPE_RA_KEYGEN;
 
     if (memcpy_s(p_request->body, data_size, out_data, data_size)) {
-        fprintf(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
+        DBG(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
                 __FUNCTION__, __LINE__);
         ret = -1;
         goto CLEANUP;
     }
     if (memcpy_s(p_request->body + data_size, SGX_AESGCM_MAC_SIZE, mac, SGX_AESGCM_MAC_SIZE)) {
-        fprintf(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
+        DBG(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
                 __FUNCTION__, __LINE__);
         ret = -1;
         goto CLEANUP;
     }
 
-    memset(client.sendbuf, 0, BUFSIZ);
-    memcpy_s(client.sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + msg_size);
+//    PKG communication time
+    st = clock();
+    memset(client.sendbuf, 0, BUFFER_SIZE);
+    memcpy_s(client.sendbuf, BUFFER_SIZE, p_request, sizeof(ra_samp_request_header_t) + msg_size);
     client.SendTo(sizeof(ra_samp_request_header_t) + p_request->size);
 
     // keygen 3
@@ -134,14 +150,17 @@ int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *
     p_response = (ra_samp_response_header_t *) malloc(
             sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
 
+    et = clock();
+    time = et - st;
+    
     if (memcpy_s(p_response, recvlen, client.recvbuf, recvlen)) {
-        fprintf(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
+        DBG(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
                 __FUNCTION__, __LINE__);
         ret = -1;
         goto CLEANUP;
     }
     if ((p_response->type != TYPE_RA_KEYGEN)) {
-        fprintf(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
+        DBG(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
                 __FUNCTION__, __LINE__);
         ret = -1;
         goto CLEANUP;
@@ -151,19 +170,19 @@ int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *
 
     memcpy_s(p_data, data_size, p_response->body, data_size);
     memcpy_s(mac, SGX_AESGCM_MAC_SIZE, p_response->body + data_size, SGX_AESGCM_MAC_SIZE);
-//    fprintf(OUTPUT, "Success Encrypt\n");
+//    DBG(OUTPUT, "Success Encrypt\n");
 //    PRINT_BYTE_ARRAY(OUTPUT, p_data, sizeof(p_data));
-//    fprintf(OUTPUT, "Encrypt Mac\n");
+//    DBG(OUTPUT, "Encrypt Mac\n");
 //    PRINT_BYTE_ARRAY(OUTPUT, mac, SGX_AESGCM_MAC_SIZE);
 
     ra_decrypt(p_data, data_size, out_data, mac, enclave_id, OUTPUT);
 
     dk_from_bytes(&aibeAlgo.dk1, out_data, aibeAlgo.size_comp_G1);
     {
-        fprintf(stdout, "Data of dk' is\n");
-        element_fprintf(stdout, "dk'.d1: %B\n", aibeAlgo.dk1.d1);
-        element_fprintf(stdout, "dk'.d2: %B\n", aibeAlgo.dk1.d2);
-        element_fprintf(stdout, "dk'.d3: %B\n", aibeAlgo.dk1.d3);
+        DBG(stdout, "Data of dk' is\n");
+        ELE_DBG(stdout, "dk'.d1: %B\n", aibeAlgo.dk1.d1);
+        ELE_DBG(stdout, "dk'.d2: %B\n", aibeAlgo.dk1.d2);
+        ELE_DBG(stdout, "dk'.d3: %B\n", aibeAlgo.dk1.d3);
     }
 
     if (aibeAlgo.keygen3()) {
@@ -172,10 +191,10 @@ int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *
     }
 
     {
-        fprintf(stdout, "Data of dk is\n");
-        element_fprintf(stdout, "dk.d1: %B\n", aibeAlgo.dk.d1);
-        element_fprintf(stdout, "dk.d2: %B\n", aibeAlgo.dk.d2);
-        element_fprintf(stdout, "dk.d3: %B\n", aibeAlgo.dk.d3);
+        DBG(stdout, "Data of dk is\n");
+        ELE_DBG(stdout, "dk.d1: %B\n", aibeAlgo.dk.d1);
+        ELE_DBG(stdout, "dk.d2: %B\n", aibeAlgo.dk.d2);
+        ELE_DBG(stdout, "dk.d3: %B\n", aibeAlgo.dk.d3);
     }
 
     CLEANUP:
@@ -207,8 +226,8 @@ int client_keyreq(NetworkClient client) {
     p_request->type = TYPE_LM_KEYREQ;
     *((int *) p_request->body) = ID;
 
-    memset(client.sendbuf, 0, BUFSIZ);
-    memcpy_s(client.sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + msg_size);
+    memset(client.sendbuf, 0, BUFFER_SIZE);
+    memcpy_s(client.sendbuf, BUFFER_SIZE, p_request, sizeof(ra_samp_request_header_t) + msg_size);
     client.SendTo(sizeof(ra_samp_request_header_t) + msg_size);
 
 // recv
@@ -217,19 +236,19 @@ int client_keyreq(NetworkClient client) {
             sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
 
     if (memcpy_s(p_response, recvlen, client.recvbuf, recvlen)) {
-        fprintf(stderr, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
+        DBG(stderr, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
                 __FUNCTION__, __LINE__);
         ret = -1;
         goto CLEANUP;
     }
     if ((p_response->type != TYPE_LM_KEYREQ)) {
-        fprintf(stderr, "Error: INTERNAL ERROR - recv type error in [%s]-[%d].",
+        DBG(stderr, "Error: INTERNAL ERROR - recv type error in [%s]-[%d].",
                 __FUNCTION__, __LINE__);
         printf("%d\n", p_response->type);
         ret = -1;
         goto CLEANUP;
     }
-    puts("Certificate received");
+    DBG(OUTPUT, "Certificate received");
 
     CLEANUP:
     SAFE_FREE(p_request);
@@ -242,7 +261,6 @@ int main(int argc, char *argv[]) {
     int ret = 0;
     sgx_enclave_id_t enclave_id = 0;
     AibeAlgo aibeAlgo;
-    FILE *OUTPUT = stdout;
     NetworkClient client;
     int pkg_port = 12333;
     int lm_port = 22333;
@@ -266,20 +284,24 @@ int main(int argc, char *argv[]) {
     sgx_ecc_state_handle_t ecc_handle;
     uint8_t result;
 
+//    test vars
+    int loops = 100;
     clock_t cnt;
-    double ts[10100];
+    clock_t start, end;
+    double sum, sum_pkg, ra_temp;
+    double ts[10100], ts_pkg[10100];
 
     //aibe load_param
 
 ////    aibe load_param
     if (aibeAlgo.load_param(param_path)) {
-        fprintf(stderr, "Param File Path error\n");
+        DBG(stderr, "Param File Path error\n");
         exit(-1);
     }
 //    printf("%d, %d, %d\n", aibeAlgo.size_GT, aibeAlgo.size_comp_G1, aibeAlgo.size_Zr);
     uint8_t ct_buf[aibeAlgo.size_ct + 10];
     uint8_t msg_buf[aibeAlgo.size_ct + 10];
-    fprintf(OUTPUT, "A-IBE Success Set Up\n");
+    DBG(OUTPUT, "A-IBE Success Set Up\n");
 ////    element init
     aibeAlgo.init();
 
@@ -292,11 +314,11 @@ int main(int argc, char *argv[]) {
                                  &enclave_id, NULL);
         if (SGX_SUCCESS != ret) {
             ret = -1;
-            fprintf(OUTPUT, "Error, call sgx_create_enclave fail [%s].\n",
+            DBG(OUTPUT, "Error, call sgx_create_enclave fail [%s].\n",
                     __FUNCTION__);
             goto CLEANUP;
         }
-        fprintf(OUTPUT, "Call sgx_create_enclave success.\n");
+        DBG(OUTPUT, "Call sgx_create_enclave success.\n");
     }
 
 //    aibeAlgo.load_param(param_path);
@@ -322,57 +344,85 @@ int main(int argc, char *argv[]) {
            "Please input a number:");
     scanf("%d", &mod);
 
-    clock_t start, end;
-    double sum;
 
     switch (mod) {
         case 1:
-            if (client.client("127.0.0.1", lm_port) != 0) {
-                fprintf(OUTPUT, "Connect Server Error, Exit!\n");
-                ret = -1;
-                goto CLEANUP;
+
+            sum = sum_pkg = 0;
+            for (int i = 0; i < loops; ++i) {
+                sleep(1);
+                start = clock();
+
+                if (client.client("127.0.0.1", lm_port) != 0) {
+                    DBG(OUTPUT, "Connect Server Error, Exit!\n");
+                    ret = -1;
+                    goto CLEANUP;
+                }
+                client_keyreq(client);
+                DBG(OUTPUT, "Key request finished\n");
+//                ts_pkg[i] += ra_temp;
+                end = clock();
+                ts[i] = end - start;
+                sum += ts[i];
+//                sum_pkg += ts_pkg[i];
             }
-            client_keyreq(client);
-            puts("Key request finished\n");
+
+            printf("%d,%lf\n", N, sum / loops);
+
             break;
 
         case 2:
-            fprintf(OUTPUT, "Start key generation\n");
-            // SOCKET: connect to server
-            if (client.client("127.0.0.1", pkg_port) != 0) {
-                fprintf(OUTPUT, "Connect Server Error, Exit!\n");
-                ret = -1;
-                goto CLEANUP;
-            }
 
-            if (remote_attestation(enclave_id, client) != SGX_SUCCESS) {
-                fprintf(OUTPUT, "Remote Attestation Error, Exit!\n");
-                ret = -1;
-                goto CLEANUP;
-            }
-
+            sum = sum_pkg = 0;
             aibeAlgo.mpk_load();
-            puts("Client: setup finished");
-////    aibe: keygen
-            if (client_keygen(ID, aibeAlgo, enclave_id, OUTPUT, client)) {
-                fprintf(stderr, "Key verify failed\n");
-                goto CLEANUP;
-            }
-            aibeAlgo.dk_store();
-            fprintf(OUTPUT, "A-IBE Success Keygen \n");
+            for (int i = 0; i < loops; ++i) {
+                start = clock();
+                if (client.client("127.0.0.1", pkg_port) != 0) {
+                    DBG(OUTPUT, "Connect Server Error, Exit!\n");
+                    ret = -1;
+                    goto CLEANUP;
+                }
 
+                DBG(OUTPUT, "Start key generation\n");
+                // SOCKET: connect to server
+                ra_temp = clock();
+
+                if (remote_attestation(enclave_id, client) != SGX_SUCCESS) {
+                    DBG(OUTPUT, "Remote Attestation Error, Exit!\n");
+                    ret = -1;
+                    goto CLEANUP;
+                }
+                ra_temp = clock() - ra_temp;
+
+                DBG(OUTPUT, "Client: setup finished");
+////    aibe: keygen
+                if (client_keygen(ID, aibeAlgo, enclave_id, OUTPUT, client, ts_pkg[i])) {
+                    DBG(stderr, "Key verify failed\n");
+                    goto CLEANUP;
+                }
+                aibeAlgo.dk_store();
+                DBG(OUTPUT, "A-IBE Success Keygen \n");
+
+                ts_pkg[i] += ra_temp;
+                end = clock();
+                ts[i] = end - start;
+                sum += ts[i];
+                sum_pkg += ts_pkg[i];
+            }
+
+            printf("%d,%lf,%lf\n", N, sum / loops, sum_pkg / loops);
             break;
 
         case 3:
             aibeAlgo.mpk_load();
-            puts("Client: setup finished");
-            fprintf(OUTPUT, "Start Encrypt\n");
+            DBG(OUTPUT, "Client: setup finished");
+            DBG(OUTPUT, "Start Encrypt\n");
             f = fopen(msg_path, "r+");
             msg_size = fread(msg_buf, sizeof(uint8_t), aibeAlgo.size_ct, f);
             fclose(f);
 
-            fprintf(OUTPUT, "Message:\n%s\n", msg_buf);
-            fprintf(OUTPUT, "Message size: %d\n", msg_size);
+            DBG(OUTPUT, "Message:\n%s\n", msg_buf);
+            DBG(OUTPUT, "Message size: %d\n", msg_size);
 
 
             ct_size = aibeAlgo.encrypt(ct_buf, (char *)msg_buf, ID);
@@ -380,20 +430,20 @@ int main(int argc, char *argv[]) {
             fwrite(ct_buf, ct_size, 1, f);
             fclose(f);
 
-            fprintf(OUTPUT, "encrypt size: %d, block size %d\n", ct_size, aibeAlgo.size_block);
+            DBG(OUTPUT, "encrypt size: %d, block size %d\n", ct_size, aibeAlgo.size_block);
 
             break;
 
         case 4:
             aibeAlgo.dk_load();
             aibeAlgo.mpk_load();
-            puts("Client: setup finished");
-            fprintf(OUTPUT, "Start Decrypt\n");
+            DBG(OUTPUT, "Client: setup finished");
+            DBG(OUTPUT, "Start Decrypt\n");
 
             f = fopen(ct_path, "r+");
             ct_size = fread(ct_buf, sizeof(uint8_t), aibeAlgo.size_ct, f);
             fclose(f);
-            fprintf(OUTPUT, "decrypt size: %d, ct size: %d\n", ct_size, aibeAlgo.size_ct);
+            DBG(OUTPUT, "decrypt size: %d, ct size: %d\n", ct_size, aibeAlgo.size_ct);
 
             aibeAlgo.decrypt(msg_buf, ct_buf, ct_size);
             printf("%s\n", msg_buf);
@@ -406,10 +456,10 @@ int main(int argc, char *argv[]) {
 
         case 101:
 //            test of RA
-            fprintf(OUTPUT, "Start key generation\n");
+            DBG(OUTPUT, "Start key generation\n");
             // SOCKET: connect to server
             if (client.client("127.0.0.1", pkg_port) != 0) {
-                fprintf(OUTPUT, "Connect Server Error, Exit!\n");
+                DBG(OUTPUT, "Connect Server Error, Exit!\n");
                 ret = -1;
                 goto CLEANUP;
             }
@@ -419,7 +469,7 @@ int main(int argc, char *argv[]) {
             for (int i = 0; i < 100; ++i) {
                 start = clock();
                 if (remote_attestation(enclave_id, client) != SGX_SUCCESS) {
-                    fprintf(OUTPUT, "Remote Attestation Error, Exit!\n");
+                    DBG(OUTPUT, "Remote Attestation Error, Exit!\n");
                     ret = -1;
                     goto CLEANUP;
                 }
@@ -432,14 +482,14 @@ int main(int argc, char *argv[]) {
                 printf("%ld\n", ts[i]);
             }
             aibeAlgo.mpk_load();
-            puts("Client: setup finished");
+            DBG(OUTPUT, "Client: setup finished");
 ////    aibe: keygen
-            if (client_keygen(ID, aibeAlgo, enclave_id, OUTPUT, client)) {
-                fprintf(stderr, "Key verify failed\n");
+            if (client_keygen(ID, aibeAlgo, enclave_id, OUTPUT, client, sum_pkg)) {
+                DBG(stderr, "Key verify failed\n");
                 goto CLEANUP;
             }
             aibeAlgo.dk_store();
-            fprintf(OUTPUT, "A-IBE Success Keygen \n");
+            DBG(OUTPUT, "A-IBE Success Keygen \n");
 
             break;
         case 102:
@@ -461,7 +511,7 @@ int main(int argc, char *argv[]) {
                 } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
 
                 if (ret != SGX_SUCCESS) {
-                    puts("102 error");
+                    DBG(OUTPUT, "102 error");
                     goto CLEANUP;
                 }
 
@@ -490,7 +540,7 @@ int main(int argc, char *argv[]) {
 
 
                 if (ret != SGX_SUCCESS) {
-                    puts("102 error");
+                    DBG(OUTPUT, "102 error");
                     goto CLEANUP;
                 }
 
@@ -519,7 +569,7 @@ int main(int argc, char *argv[]) {
                                        &ecc_handle);
 
                 if (ret != SGX_SUCCESS && status != SGX_SUCCESS) {
-                    puts("103 error");
+                    DBG(OUTPUT, "103 error");
                     goto CLEANUP;
                 }
                 end = clock();
@@ -544,7 +594,7 @@ int main(int argc, char *argv[]) {
                                  (uint8_t*) &ecc_handle);
 
                 if (ret != SGX_SUCCESS) {
-                    puts("103 error");
+                    DBG(OUTPUT, "103 error");
                     goto CLEANUP;
                 }
                 end = clock();
@@ -570,7 +620,7 @@ int main(int argc, char *argv[]) {
                                  (uint8_t*) &ecc_handle);
 
                 if (ret != SGX_SUCCESS) {
-                    puts("103 error");
+                    DBG(OUTPUT, "103 error");
                     goto CLEANUP;
                 }
 
@@ -609,7 +659,7 @@ int main(int argc, char *argv[]) {
                                        (uint8_t*) &ecc_handle);
 
                 if (ret != SGX_SUCCESS) {
-                    puts("104 error");
+                    DBG(OUTPUT, "104 error");
                     goto CLEANUP;
                 }
                 end = clock();
@@ -635,7 +685,7 @@ int main(int argc, char *argv[]) {
                                          (uint8_t*) &ecc_handle);
 
                 if (ret != SGX_SUCCESS) {
-                    puts("104 error");
+                    DBG(OUTPUT, "104 error");
                     goto CLEANUP;
                 }
 
@@ -661,7 +711,7 @@ int main(int argc, char *argv[]) {
     sgx_destroy_enclave(enclave_id);
 
     aibeAlgo.clear();
-    fprintf(OUTPUT, "Success Clean Up A-IBE \n");
+    DBG(OUTPUT, "Success Clean Up A-IBE \n");
 
     return ret;
 }

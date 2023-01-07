@@ -39,6 +39,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#define BUFFER_SIZE 81920
 
 /* Enum for all possible message types between the ISV app and
  * the ISV SP. Requests and responses in the remote attestation
@@ -96,8 +97,8 @@ extern "C" {
 
 class NetworkEnd {
 public:
-    char sendbuf[BUFSIZ];  //数据传送的缓冲区
-    char recvbuf[BUFSIZ];
+    char sendbuf[BUFFER_SIZE];  //数据传送的缓冲区
+    char recvbuf[BUFFER_SIZE];
     int  sockfd;//套接字
     int  client_sockfd;
 

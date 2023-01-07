@@ -181,6 +181,9 @@ int NetworkServer::server(int port) {
         return 1;
     }
 
+    int j = 1;
+    setsockopt(sockfd,SOL_SOCKET,SO_REUSEADDR,&j,sizeof(j));
+
     /*将套接字绑定到服务器的网络地址上*/
     if (bind(sockfd, (struct sockaddr *) &my_addr, sizeof(struct sockaddr)) < 0) {
         perror("bind");

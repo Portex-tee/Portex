@@ -9,7 +9,7 @@
 #include <pbc/pbc_test.h>
 #include <cmath>
 
-#define N 8
+#define N ((int)(1 << 4))
 #define BLOCK_MAX 8
 
 const int z_size = N + 1;
@@ -97,6 +97,8 @@ public:
     int load_param(const char *fn);
 
     void pkg_setup_generate();
+
+    void pkg_setup_generate(const char *pk_path, const char *sk_path);
 
     void msk_load();
 
@@ -239,9 +241,9 @@ int AibeAlgo::run(FILE *OUTPUT) {
 
 int AibeAlgo::load_param(const char *fn) {
     int ret = 0;
-    char param[1024];
+    char param[10240];
     FILE *param_file = fopen(fn, "r");
-    size_t count = fread(param, sizeof(char), 1024, param_file);
+    size_t count = fread(param, sizeof(char), 10240, param_file);
     if (!count) {
         ret = -1;
         goto CLEANUP;
@@ -290,9 +292,10 @@ void AibeAlgo::init() {
 
 }
 
-void AibeAlgo::pkg_setup_generate() {
-    FILE *fpk = fopen(mpk_path, "w+");
-    FILE *fsk = fopen(msk_path, "w+");
+void AibeAlgo::pkg_setup_generate(const char *pk_path, const char *sk_path) {
+
+    FILE *fpk = fopen(pk_path, "w+");
+    FILE *fsk = fopen(sk_path, "w+");
 
     element_random(g);
     element_random(mpk.h);
@@ -334,10 +337,14 @@ void AibeAlgo::pkg_setup_generate() {
     fclose(fsk);
 }
 
+void AibeAlgo::pkg_setup_generate() {
+    pkg_setup_generate(mpk_path, msk_path);
+}
+
 void AibeAlgo::mpk_load() {
     FILE *fpk = fopen(mpk_path, "r+");
 
-    char buffer[1024];
+    char buffer[10240];
 
     fread(buffer, size_comp_G2, 1, fpk);
     element_from_bytes_compressed(g, (unsigned char *) buffer);
@@ -627,12 +634,13 @@ void AibeAlgo::decrypt(uint8_t *msg, uint8_t *data, int size) {
 //    printf("%s\n", msg);
 }
 
+
 void data_xor(uint8_t *out, const uint8_t *d1, const uint8_t *d2, int size) {
     uint8_t buffer[size];
     for (int i = 0; i < size; ++i) {
         buffer[i] = d1[i] ^ d2[i];
     }
-    memcpy_s(out, size, buffer, size);
+    memcpy(out, buffer, size);
 }
 
 #endif //PBC_TEST_AIBE_H
