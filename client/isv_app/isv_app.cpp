@@ -328,6 +328,35 @@ int client_trace(NetworkClient client) {
     return ret;
 }
 
+int client_inspect(const std::string& dk2_path, AibeAlgo &aibeAlgo) {
+    aibeAlgo.dk_load();
+    aibeAlgo.dk2_load(dk2_path);
+    aibeAlgo.mpk_load();
+    aibeAlgo.set_Hz(ID);
+
+    if (!aibeAlgo.dk_verify()) {
+        printf("Client decrypt key is invalid!\n");
+        return -1;
+    }
+    printf("Client decrypt key is valid!\n");
+
+    if (!aibeAlgo.dk_verify(aibeAlgo.dk2)) {
+        printf("Input decrypt key is invalid!\n");
+        return 0;
+    }
+    printf("Input decrypt key is valid!\n");
+
+    if (element_cmp(aibeAlgo.dk.d1, aibeAlgo.dk2.d1)
+    || element_cmp(aibeAlgo.dk.d2, aibeAlgo.dk2.d2)
+    || element_cmp(aibeAlgo.dk.d3, aibeAlgo.dk2.d3)) {
+        printf("Another valid key detected!\n");
+        return 1;
+    }
+
+    printf("The same key detected!\n");
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
 //    printf("%d\n", sizeof(uint8_t));
     int ret = 0;
@@ -341,6 +370,7 @@ int main(int argc, char *argv[]) {
     sgx_launch_token_t launch_token = {0};
     FILE *f;
     int ct_size, msg_size;
+    std::string dk2_path;
 
     // test
 
@@ -541,10 +571,39 @@ int main(int argc, char *argv[]) {
 
 
         case 6:
-            aibeAlgo.dk_load();
-            aibeAlgo.mpk_load();
 
-            DBG(OUTPUT, "TEE inspect finished\n");
+            printf("Please input decrypt key file path:\n");
+            std::cin >> dk2_path;
+            ret = client_inspect(dk2_path, aibeAlgo);
+            DBG(OUTPUT, "[DBG] TEE inspect finished\n");
+
+            {
+                DBG(stdout, "[DBG] Client decrypt key:\n");
+                ELE_DBG(stdout, "dk.d1: %B\n", aibeAlgo.dk.d1);
+                ELE_DBG(stdout, "dk.d2: %B\n", aibeAlgo.dk.d2);
+                ELE_DBG(stdout, "dk.d3: %B\n", aibeAlgo.dk.d3);
+            }
+
+            {
+                DBG(stdout, "[DBG] Input decrypt key:\n");
+                ELE_DBG(stdout, "dk2.d1: %B\n", aibeAlgo.dk2.d1);
+                ELE_DBG(stdout, "dk2.d2: %B\n", aibeAlgo.dk2.d2);
+                ELE_DBG(stdout, "dk2.d3: %B\n", aibeAlgo.dk2.d3);
+            }
+
+            switch (ret) {
+                case 0:
+                    printf("PASS: No misbehavior detected!\n");
+                    break;
+                case -1:
+                    printf("ERROR: TEE inspect failed\n");
+                    break;
+                case 1:
+                    printf("FAILED: TEE misbehavior detected!\n");
+                    break;
+                default:
+                    DBG(OUTPUT, "ERROR: TEE inspect failed\n");
+            }
 
             break;
 

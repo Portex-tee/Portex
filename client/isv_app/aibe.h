@@ -80,6 +80,7 @@ public:
     element_t t1; // Zr
     dk_t dk; // d_ID
     dk_t dk1; // d'_ID
+    dk_t dk2; // compare dk
 
     // temp elements
     element_t tz; // Zr
@@ -108,7 +109,15 @@ public:
 
     void dk_load();
 
+    void dk2_load(const std::string& dk2_path);
+
+    bool dk_verify();
+
+    bool dk_verify(dk_t &dkt);
+
     void init();
+
+    void set_Hz(int id);
 
     void keygen1(int id);
 
@@ -285,6 +294,7 @@ void AibeAlgo::init() {
     element_init_Zr(t1, pairing);
     dk_init(&dk, pairing);
     dk_init(&dk1, pairing);
+    dk_init(&dk2, pairing);
 
     element_init_Zr(tz, pairing);
     element_init_G1(tg, pairing);
@@ -384,10 +394,7 @@ void AibeAlgo::msk_load() {
     fclose(fsk);
 }
 
-// client keygen 1
-void AibeAlgo::keygen1(const int id) {
-    element_random(t0);
-    element_random(theta);
+void AibeAlgo::set_Hz(int id) {
 
     element_set(Hz, mpk.Z[0]);
     {
@@ -399,6 +406,15 @@ void AibeAlgo::keygen1(const int id) {
             mpz_clear(digit);
         }
     }
+
+}
+
+// client keygen 1
+void AibeAlgo::keygen1(const int id) {
+    element_random(t0);
+    element_random(theta);
+
+    set_Hz(id);
 
     // R = h^t0 * X^theta
     element_pow_zn(R, mpk.h, t0);
@@ -447,6 +463,11 @@ int AibeAlgo::keygen3() {
     element_mul(dk.d2, dk1.d2, tg);
     //  d3 = d3' + t0
     element_add(dk.d3, dk1.d3, t0);
+
+    if(!dk_verify()) {
+        ret =-1;
+    }
+    return ret;
 
     //  el = e(d1, X)
     element_pairing(el, dk.d1, mpk.X);
@@ -520,6 +541,20 @@ void AibeAlgo::dk_load() {
     element_from_bytes_compressed(dk.d2, (unsigned char *) buffer);
     fread(buffer, size_Zr, 1, f);
     element_from_bytes(dk.d3, (unsigned char *) buffer);
+
+    fclose(f);
+}
+
+void AibeAlgo::dk2_load(const std::string& dk2_path) {
+    FILE *f = fopen(dk2_path.c_str(), "r+");
+    char buffer[1024];
+
+    fread(buffer, size_comp_G1, 1, f);
+    element_from_bytes_compressed(dk2.d1, (unsigned char *) buffer);
+    fread(buffer, size_comp_G1, 1, f);
+    element_from_bytes_compressed(dk2.d2, (unsigned char *) buffer);
+    fread(buffer, size_Zr, 1, f);
+    element_from_bytes(dk2.d3, (unsigned char *) buffer);
 
     fclose(f);
 }
@@ -632,6 +667,36 @@ void AibeAlgo::decrypt(uint8_t *msg, uint8_t *data, int size) {
     msg[block_num * size_msg_block] = '\0';
 
 //    printf("%s\n", msg);
+}
+
+
+bool AibeAlgo::dk_verify() {
+    return dk_verify(dk);
+}
+
+bool AibeAlgo::dk_verify(dk_t &dkt) {
+    element_pairing(el, dkt.d1, mpk.X);
+    //  er = e(Y, g)
+    element_pairing(er, mpk.Y, g);
+    //  er = er * e(h, g)^d3
+    element_pairing(te, mpk.h, g);
+    element_pow_zn(te, te, dkt.d3);
+    element_mul(er, er, te);
+    //  er = er * e(Hz, d2)
+    element_pairing(te, Hz, dkt.d2);
+    element_mul(er, er, te);
+
+
+//    element_printf("%B\n", mpk.X);
+//    element_printf("%B\n", mpk.Y);
+//    element_printf("%B\n", g);
+//    element_printf("%B\n", dkt.d1);
+//    element_printf("%B\n", dkt.d2);
+//    element_printf("%B\n", dkt.d3);
+//    element_printf("%B\n", Hz);
+//    element_printf("left: %B, right: %B\n", el, er);
+
+    return element_cmp(el, er) == 0;
 }
 
 
