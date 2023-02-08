@@ -62,7 +62,7 @@
 
 #include "aibe.h"
 
-#define LENOFMSE 10240
+#define LENOFMSE 1024
 
 #ifndef SAFE_FREE
 #define SAFE_FREE(ptr)     \
@@ -94,7 +94,7 @@ extern char recvbuf[BUFSIZ];
 
 int lm_keyreq(const ra_samp_request_header_t *p_msg,
               uint32_t msg_size,
-              LogTree logTree,
+              LogTree &logTree,
               sgx_enclave_id_t enclave_id,
               FILE *OUTPUT,
               NetworkClient client,
@@ -108,18 +108,24 @@ int lm_keyreq(const ra_samp_request_header_t *p_msg,
     ra_samp_response_header_t *p_response = NULL;
     int data_size, msg2_size, recvlen;
 
+
+    timeval tv = {};
+    gettimeofday(&tv, NULL);
+
     std::string srcStr;
-    srcStr = std::to_string(*((int*)p_msg));
+    int id;
+
+    id = *((int*)p_msg);
+    srcStr = get_timestamp(id, tv);
     sha256(srcStr, encodedHexStr);
     ChronTreeT::Hash hash(encodedHexStr);
-    logTree.append(hash, proofs);
+    logTree.append(id, tv, hash, proofs);
 
     msg2_size = proofs.serialise(data);
     p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg2_size);
     p_request->type = TYPE_RA_KEYREQ;
     p_request->size = msg2_size;
 
-    // todo: encrypt/decrypt
     memcpy_s(p_request->body, msg2_size, data, msg2_size);
 
     if (memcpy_s(p_request->body, msg2_size, data, msg2_size)) {
@@ -155,10 +161,54 @@ int lm_keyreq(const ra_samp_request_header_t *p_msg,
     memcpy_s(server.sendbuf, BUFSIZ, p_response, sizeof(ra_samp_response_header_t) + p_response->size);
     server.SendTo(sizeof(ra_samp_response_header_t) + p_response->size);
 
+
 //    assert(proofs.path->verify(proofs.root));
 
     CLEANUP:
     SAFE_FREE(p_request);
+    SAFE_FREE(p_response);
+    return ret;
+}
+
+int lm_trace(const ra_samp_request_header_t *p_msg,
+              uint32_t msg_size,
+              LogTree &logTree,
+              sgx_enclave_id_t enclave_id,
+              FILE *OUTPUT,
+              NetworkServer server) {
+
+
+    int ret = 0;
+    uint8_t data[BUFSIZ];
+    Proofs proofs;
+    std::string encodedHexStr;
+    ra_samp_response_header_t *p_response = NULL;
+    int data_size, msg2_size, recvlen;
+
+    timeval tv = {};
+    gettimeofday(&tv, NULL);
+
+    std::string srcStr;
+    int n, id = *((int*)p_msg);
+
+    timeval tv_list[100];
+    n = logTree.trace(id, tv_list);
+    fprintf(OUTPUT, "\nID: %d\n", id);
+    for (int i = 0; i < n; ++i) {
+        fprintf(OUTPUT, "--%ld_%ld\n", tv_list[i].tv_sec, tv_list[i].tv_usec);
+    }
+
+    p_response = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t) + n * sizeof(timeval));
+
+    p_response->type = TYPE_LM_TRACE;
+    p_response->size = n * sizeof(timeval);
+    memcpy(p_response->body, tv_list, p_response->size);
+    memset(server.sendbuf, 0, BUFSIZ);
+    memcpy_s(server.sendbuf, BUFSIZ, p_response, sizeof(ra_samp_response_header_t) + p_response->size);
+    server.SendTo(sizeof(ra_samp_response_header_t) + p_response->size);
+
+    SAFE_FREE(p_response);
+
     return ret;
 }
 
@@ -175,6 +225,14 @@ int main(int argc, char *argv[])
     ra_samp_response_header_t **p_resp;
     ra_samp_response_header_t *p_resp_msg;
     int buflen = 0;
+
+    Proofs proofs;
+    std::string encodedHexStr;
+    timeval tv = {};
+    std::string srcStr;
+    int id = ID;
+
+    gettimeofday(&tv, NULL);
 
     int launch_token_update = 0;
     sgx_launch_token_t launch_token = {0};
@@ -197,6 +255,7 @@ int main(int argc, char *argv[])
 
     fprintf(OUTPUT, "start socket....\n");
     server.server(lm_port);
+
 
     do {
         bool is_recv = true;
@@ -245,6 +304,22 @@ int main(int argc, char *argv[])
                                       OUTPUT,
                                       client,
                                       server);
+
+                        SAFE_FREE(p_req);
+                        is_recv = false;
+                        break;
+
+
+                    case TYPE_LM_TRACE:
+                        fprintf(OUTPUT, "LM key request\n");
+
+                        lm_trace((const ra_samp_request_header_t *) ((uint8_t *) p_req +
+                                                                      sizeof(ra_samp_request_header_t)),
+                                  p_req->size,
+                                  logTree,
+                                  enclave_id,
+                                  OUTPUT,
+                                  server);
 
                         SAFE_FREE(p_req);
                         is_recv = false;

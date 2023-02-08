@@ -77,14 +77,14 @@
 
 #define LENOFMSE 1024
 
-#define debug_enable (0)  //1---open   0---close
+#define debug_enable (1)  //1---open   0---close
 
 #define DBG(...) if(debug_enable)(fprintf(__VA_ARGS__))
 #define ELE_DBG(...) if(debug_enable)(element_fprintf(__VA_ARGS__))
 
 
 int rbits = 160;
-int qbits = (1 << 10); // lambda
+int qbits = (1 << 8); // lambda
 
 uint8_t *msg1_samples[] = {msg1_sample1, msg1_sample2};
 uint8_t *msg2_samples[] = {msg2_sample1, msg2_sample2};
@@ -228,7 +228,7 @@ int myaesencrypt(const ra_samp_request_header_t *p_msgenc,
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
-    memset(server.sendbuf, 0, BUFFER_SIZE);
+    memset(server.sendbuf, 0, BUFSIZ);
     if (memcpy_s(server.sendbuf,
                  msg2_size + sizeof(ra_samp_response_header_t),
                  p_msg2_full,
@@ -309,7 +309,7 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
-    memset(server.sendbuf, 0, BUFFER_SIZE);
+    memset(server.sendbuf, 0, BUFSIZ);
     if (memcpy_s(server.sendbuf,
                  msg2_size + sizeof(ra_samp_response_header_t),
                  p_msg2_full,
@@ -425,7 +425,7 @@ int pkg_keygen(const ra_samp_request_header_t *p_msg,
         ret = SP_INTERNAL_ERROR;
         return ret;
     }
-    memset(server.sendbuf, 0, BUFFER_SIZE);
+    memset(server.sendbuf, 0, BUFSIZ);
     if (memcpy_s(server.sendbuf,
                  msg2_size + sizeof(ra_samp_response_header_t),
                  p_msg2_full,
@@ -453,11 +453,11 @@ int pkg_keyreq(const ra_samp_request_header_t *p_msg,
                sgx_status_t *status,
                NetworkServer &server) {
     if (!p_msg ||
-        (msg_size > BUFFER_SIZE)) {
+        (msg_size > BUFSIZ)) {
         return -1;
     }
     int ret = 0;
-    uint8_t data[BUFFER_SIZE];
+    uint8_t data[BUFSIZ];
     Proofs proofs;
     int msg2_size;
     ra_samp_response_header_t *p_response = NULL;
@@ -485,7 +485,7 @@ int pkg_keyreq(const ra_samp_request_header_t *p_msg,
     p_response->status[1] = 0;
 
 
-    memset(server.sendbuf, 0, BUFFER_SIZE);
+    memset(server.sendbuf, 0, BUFSIZ);
     if (memcpy_s(server.sendbuf,
                  msg2_size + sizeof(ra_samp_response_header_t),
                  p_response,
@@ -631,7 +631,7 @@ int main(int argc, char *argv[]) {
         do {
             //阻塞调用socket
             buflen = server.RecvFrom();
-            if (buflen > 0 && buflen < BUFFER_SIZE) {
+            if (buflen > 0 && buflen < BUFSIZ) {
                 p_req = (ra_samp_request_header_t *) malloc(buflen + 2);
 
                 DBG(OUTPUT, "\nPrepare receive struct");
@@ -661,7 +661,7 @@ int main(int argc, char *argv[]) {
                                 p_req->size);
                         DBG(OUTPUT, "\nProcess Message 0 Done");
                         if (0 != ret) {
-                            DBG(stderr, "\nError, call sp_ra_proc_msg1_req fail [%s].",
+                            DBG(OUTPUT, "\nError, call sp_ra_proc_msg1_req fail [%s].",
                                     __FUNCTION__);
                         }
                         SAFE_FREE(p_req);
@@ -681,8 +681,8 @@ int main(int argc, char *argv[]) {
                             DBG(stderr, "\nError, call sp_ra_proc_msg1_req fail [%s].",
                                     __FUNCTION__);
                         } else {
-                            memset(server.sendbuf, 0, BUFFER_SIZE);
-                            if (memcpy_s(server.sendbuf, BUFFER_SIZE, p_resp_msg,
+                            memset(server.sendbuf, 0, BUFSIZ);
+                            if (memcpy_s(server.sendbuf, BUFSIZ, p_resp_msg,
                                          sizeof(ra_samp_response_header_t) + p_resp_msg->size)) {
                                 DBG(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s].",
                                         __FUNCTION__);
@@ -710,8 +710,8 @@ int main(int argc, char *argv[]) {
                             DBG(stderr, "\nError, call sp_ra_proc_msg3_req fail [%s].",
                                     __FUNCTION__);
                         } else {
-                            memset(server.sendbuf, 0, BUFFER_SIZE);
-                            if (memcpy_s(server.sendbuf, BUFFER_SIZE, p_resp_msg,
+                            memset(server.sendbuf, 0, BUFSIZ);
+                            if (memcpy_s(server.sendbuf, BUFSIZ, p_resp_msg,
                                          sizeof(ra_samp_response_header_t) + p_resp_msg->size)) {
                                 DBG(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s].",
                                         __FUNCTION__);

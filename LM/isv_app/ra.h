@@ -64,6 +64,22 @@
 
 // Needed to calculate keys
 
+#include <sys/select.h>
+
+
+static void sleep_ms(unsigned int secs)
+
+{
+
+    struct timeval tval;
+
+    tval.tv_sec=secs/1000;
+
+    tval.tv_usec=(secs*1000)%1000000;
+
+    select(0,NULL,NULL,NULL,&tval);
+
+}
 
 #ifndef SAFE_FREE
 #define SAFE_FREE(ptr)     \
@@ -207,7 +223,7 @@ int ra_decrypt(uint8_t *data, int data_len, uint8_t *output, uint8_t *mac, sgx_e
         goto CLEANUP;
     }
 
-CLEANUP:
+    CLEANUP:
     return ret;
 }
 
@@ -232,7 +248,7 @@ int ra_encrypt(uint8_t *data, int data_len, uint8_t *output, uint8_t *mac, sgx_e
         goto CLEANUP;
     }
 
-CLEANUP:
+    CLEANUP:
     return ret;
 }
 
@@ -299,6 +315,7 @@ int remote_attestation(sgx_enclave_id_t enclave_id, NetworkClient &client)
                                       p_msg0_full,
                                       &p_msg0_resp_full,
                                       client);
+        sleep_ms(50);
         if (ret != 0)
         {
             fprintf(OUTPUT, "\nError, ra_network_send_receive for msg0 failed "
@@ -390,6 +407,7 @@ int remote_attestation(sgx_enclave_id_t enclave_id, NetworkClient &client)
             ret = -1;
             goto CLEANUP;
         }
+        puts("\nHERE!!!");
         ret = ra_network_send_receive("http://SampleServiceProvider.intel.com/",
                                       p_msg1_full,
                                       &p_msg2_full,

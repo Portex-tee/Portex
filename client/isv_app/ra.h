@@ -64,6 +64,22 @@
 
 // Needed to calculate keys
 
+#include <sys/select.h>
+
+
+static void sleep_ms(unsigned int secs)
+
+{
+
+    struct timeval tval;
+
+    tval.tv_sec=secs/1000;
+
+    tval.tv_usec=(secs*1000)%1000000;
+
+    select(0,NULL,NULL,NULL,&tval);
+
+}
 
 #ifndef SAFE_FREE
 #define SAFE_FREE(ptr)     \
@@ -94,22 +110,22 @@ uint8_t *attestation_msg_samples[] =
 void PRINT_BYTE_ARRAY(
         FILE *file, void *mem, uint32_t len)
 {
-    if (!mem || !len)
-    {
-        fprintf(file, "\n( null )\n");
-        return;
-    }
-    uint8_t *array = (uint8_t *)mem;
-    fprintf(file, "%u bytes:\n{\n", len);
-    uint32_t i = 0;
-    for (i = 0; i < len - 1; i++)
-    {
-        fprintf(file, "0x%x, ", array[i]);
-        if (i % 8 == 7)
-            fprintf(file, "\n");
-    }
-    fprintf(file, "0x%x ", array[i]);
-    fprintf(file, "\n}\n");
+//    if (!mem || !len)
+//    {
+//        fprintf(file, "\n( null )\n");
+//        return;
+//    }
+//    uint8_t *array = (uint8_t *)mem;
+//    fprintf(file, "%u bytes:\n{\n", len);
+//    uint32_t i = 0;
+//    for (i = 0; i < len - 1; i++)
+//    {
+//        fprintf(file, "0x%x, ", array[i]);
+//        if (i % 8 == 7)
+//            fprintf(file, "\n");
+//    }
+//    fprintf(file, "0x%x ", array[i]);
+//    fprintf(file, "\n}\n");
 }
 
 void PRINT_ATTESTATION_SERVICE_RESPONSE(
@@ -299,6 +315,7 @@ int remote_attestation(sgx_enclave_id_t enclave_id, NetworkClient &client)
                                       p_msg0_full,
                                       &p_msg0_resp_full,
                                       client);
+        sleep_ms(50);
         if (ret != 0)
         {
             fprintf(OUTPUT, "\nError, ra_network_send_receive for msg0 failed "
@@ -390,6 +407,7 @@ int remote_attestation(sgx_enclave_id_t enclave_id, NetworkClient &client)
             ret = -1;
             goto CLEANUP;
         }
+        puts("\nHERE!!!");
         ret = ra_network_send_receive("http://SampleServiceProvider.intel.com/",
                                       p_msg1_full,
                                       &p_msg2_full,

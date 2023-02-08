@@ -83,14 +83,26 @@
 
 #define ENCLAVE_PATH "isv_enclave.signed.so"
 
-#define debug_enable (0)  //1---open   0---close
+#define debug_enable (1)  //1---open   0---close
 
 #define DBG(...) if(debug_enable)(fprintf(__VA_ARGS__))
 #define ELE_DBG(...) if(debug_enable)(element_fprintf(__VA_ARGS__))
 
 FILE *OUTPUT = stdout;
 
-int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT, NetworkClient client, double &time) {
+void getLocalTime(char *timeStr, int len, struct timeval tv) {
+    struct tm *ptm;
+    long milliseconds;
+
+    ptm = localtime(&(tv.tv_sec));
+    strftime(timeStr, len, "%Y-%m-%d %H-%M-%S", ptm);
+    milliseconds = tv.tv_usec / 1000;
+
+    sprintf(timeStr, "%s.%03ld", timeStr, milliseconds);
+}
+
+int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT, NetworkClient client,
+                  double &time) {
     int ret = 0;
     sgx_status_t status = SGX_SUCCESS;
     ra_samp_request_header_t *p_request = NULL;
@@ -99,7 +111,7 @@ int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *
     int busy_retry_time;
     int data_size;
     int msg_size;
-    
+
 //    test
     clock_t st, et;
 
@@ -128,21 +140,21 @@ int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *
 
     if (memcpy_s(p_request->body, data_size, out_data, data_size)) {
         DBG(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
-                __FUNCTION__, __LINE__);
+            __FUNCTION__, __LINE__);
         ret = -1;
         goto CLEANUP;
     }
     if (memcpy_s(p_request->body + data_size, SGX_AESGCM_MAC_SIZE, mac, SGX_AESGCM_MAC_SIZE)) {
         DBG(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
-                __FUNCTION__, __LINE__);
+            __FUNCTION__, __LINE__);
         ret = -1;
         goto CLEANUP;
     }
 
 //    PKG communication time
     st = clock();
-    memset(client.sendbuf, 0, BUFFER_SIZE);
-    memcpy_s(client.sendbuf, BUFFER_SIZE, p_request, sizeof(ra_samp_request_header_t) + msg_size);
+    memset(client.sendbuf, 0, BUFSIZ);
+    memcpy_s(client.sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + msg_size);
     client.SendTo(sizeof(ra_samp_request_header_t) + p_request->size);
 
     // keygen 3
@@ -152,16 +164,16 @@ int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *
 
     et = clock();
     time = et - st;
-    
+
     if (memcpy_s(p_response, recvlen, client.recvbuf, recvlen)) {
         DBG(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
-                __FUNCTION__, __LINE__);
+            __FUNCTION__, __LINE__);
         ret = -1;
         goto CLEANUP;
     }
     if ((p_response->type != TYPE_RA_KEYGEN)) {
         DBG(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
-                __FUNCTION__, __LINE__);
+            __FUNCTION__, __LINE__);
         ret = -1;
         goto CLEANUP;
     }
@@ -226,8 +238,8 @@ int client_keyreq(NetworkClient client) {
     p_request->type = TYPE_LM_KEYREQ;
     *((int *) p_request->body) = ID;
 
-    memset(client.sendbuf, 0, BUFFER_SIZE);
-    memcpy_s(client.sendbuf, BUFFER_SIZE, p_request, sizeof(ra_samp_request_header_t) + msg_size);
+    memset(client.sendbuf, 0, BUFSIZ);
+    memcpy_s(client.sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + msg_size);
     client.SendTo(sizeof(ra_samp_request_header_t) + msg_size);
 
 // recv
@@ -237,18 +249,78 @@ int client_keyreq(NetworkClient client) {
 
     if (memcpy_s(p_response, recvlen, client.recvbuf, recvlen)) {
         DBG(stderr, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
-                __FUNCTION__, __LINE__);
+            __FUNCTION__, __LINE__);
         ret = -1;
         goto CLEANUP;
     }
     if ((p_response->type != TYPE_LM_KEYREQ)) {
         DBG(stderr, "Error: INTERNAL ERROR - recv type error in [%s]-[%d].",
-                __FUNCTION__, __LINE__);
+            __FUNCTION__, __LINE__);
         printf("%d\n", p_response->type);
         ret = -1;
         goto CLEANUP;
     }
     DBG(OUTPUT, "Certificate received");
+
+    CLEANUP:
+    SAFE_FREE(p_request);
+    SAFE_FREE(p_response);
+    return ret;
+}
+
+
+int client_trace(NetworkClient client) {
+
+    int ret = 0;
+    sgx_status_t status = SGX_SUCCESS;
+    ra_samp_request_header_t *p_request = NULL;
+    ra_samp_response_header_t *p_response = NULL;
+    int recvlen = 0;
+    int busy_retry_time;
+    int data_size;
+    int msg_size;
+    int n;
+    timeval *tv_list;
+    char timeStr[128];
+
+    msg_size = sizeof(int);
+    p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);
+    p_request->size = msg_size;
+    p_request->type = TYPE_LM_TRACE;
+    *((int *) p_request->body) = ID;
+
+    memset(client.sendbuf, 0, BUFSIZ);
+    memcpy_s(client.sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + msg_size);
+    client.SendTo(sizeof(ra_samp_request_header_t) + msg_size);
+
+// recv
+    recvlen = client.RecvFrom();
+    p_response = (ra_samp_response_header_t *) malloc(
+            sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
+
+    if (memcpy_s(p_response, recvlen, client.recvbuf, recvlen)) {
+        DBG(stderr, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
+            __FUNCTION__, __LINE__);
+        ret = -1;
+        goto CLEANUP;
+    }
+    if ((p_response->type != TYPE_LM_TRACE)) {
+        DBG(stderr, "Error: INTERNAL ERROR - recv type error in [%s]-[%d].",
+            __FUNCTION__, __LINE__);
+        printf("%d\n", p_response->type);
+        ret = -1;
+        goto CLEANUP;
+    }
+    DBG(OUTPUT, "Log list received");
+
+    n = p_response->size / sizeof(timeval);
+    tv_list = (timeval *) p_response->body;
+
+    fprintf(OUTPUT, "\nID: %d\n", ID);
+    for (int i = 0; i < n; ++i) {
+        getLocalTime(timeStr, sizeof(timeStr), tv_list[i]);
+        printf("<%d>: %s\n", i, timeStr);
+    }
 
     CLEANUP:
     SAFE_FREE(p_request);
@@ -285,7 +357,7 @@ int main(int argc, char *argv[]) {
     uint8_t result;
 
 //    test vars
-    int loops = 100;
+    int loops = 1;
     clock_t cnt;
     clock_t start, end;
     double sum, sum_pkg, ra_temp;
@@ -315,7 +387,7 @@ int main(int argc, char *argv[]) {
         if (SGX_SUCCESS != ret) {
             ret = -1;
             DBG(OUTPUT, "Error, call sgx_create_enclave fail [%s].\n",
-                    __FUNCTION__);
+                __FUNCTION__);
             goto CLEANUP;
         }
         DBG(OUTPUT, "Call sgx_create_enclave success.\n");
@@ -339,8 +411,10 @@ int main(int argc, char *argv[]) {
     printf("Please choose a function:\n"
            "1) key request\n"
            "2) key generation\n"
-           "3) block_encrypt\n"
-           "4) block_decrypt\n"
+           "3) encrypt\n"
+           "4) decrypt\n"
+           "5) log trace\n"
+           "6) tee inspect\n"
            "Please input a number:");
     scanf("%d", &mod);
 
@@ -350,7 +424,6 @@ int main(int argc, char *argv[]) {
 
             sum = sum_pkg = 0;
             for (int i = 0; i < loops; ++i) {
-                sleep(1);
                 start = clock();
 
                 if (client.client("127.0.0.1", lm_port) != 0) {
@@ -367,7 +440,7 @@ int main(int argc, char *argv[]) {
 //                sum_pkg += ts_pkg[i];
             }
 
-            printf("%d,%lf\n", N, sum / loops);
+//            printf("%d,%lf\n", N, sum / loops);
 
             break;
 
@@ -410,7 +483,7 @@ int main(int argc, char *argv[]) {
                 sum_pkg += ts_pkg[i];
             }
 
-            printf("%d,%lf,%lf\n", N, sum / loops, sum_pkg / loops);
+//            printf("%d,%lf,%lf\n", N, sum / loops, sum_pkg / loops);
             break;
 
         case 3:
@@ -425,7 +498,7 @@ int main(int argc, char *argv[]) {
             DBG(OUTPUT, "Message size: %d\n", msg_size);
 
 
-            ct_size = aibeAlgo.encrypt(ct_buf, (char *)msg_buf, ID);
+            ct_size = aibeAlgo.encrypt(ct_buf, (char *) msg_buf, ID);
             f = fopen(ct_path, "w+");
             fwrite(ct_buf, ct_size, 1, f);
             fclose(f);
@@ -449,8 +522,29 @@ int main(int argc, char *argv[]) {
             printf("%s\n", msg_buf);
 
             f = fopen(out_path, "w+");
-            fwrite(msg_buf, strlen((char *)msg_buf), 1, f);
+            fwrite(msg_buf, strlen((char *) msg_buf), 1, f);
             fclose(f);
+
+            break;
+
+        case 5:
+
+            if (client.client("127.0.0.1", lm_port) != 0) {
+                DBG(OUTPUT, "Connect Server Error, Exit!\n");
+                ret = -1;
+                goto CLEANUP;
+            }
+            client_trace(client);
+            DBG(OUTPUT, "Log trace finished\n");
+
+            break;
+
+
+        case 6:
+            aibeAlgo.dk_load();
+            aibeAlgo.mpk_load();
+
+            DBG(OUTPUT, "TEE inspect finished\n");
 
             break;
 
@@ -519,7 +613,7 @@ int main(int argc, char *argv[]) {
                 ts[i] = end - start;
                 sum += ts[i];
             }
-            printf("SE Encrypt Time(μs): %lf\n" , double(sum) / 100);
+            printf("SE Encrypt Time(μs): %lf\n", double(sum) / 100);
             for (int i = 0; i < 100; ++i) {
                 printf("%d\n", (int) ts[i]);
             }
@@ -548,7 +642,7 @@ int main(int argc, char *argv[]) {
                 ts[i] = end - start;
                 sum += ts[i];
             }
-            printf("SE Decrypt Time(μs): %lf\n" , double(sum) / 100);
+            printf("SE Decrypt Time(μs): %lf\n", double(sum) / 100);
             for (int i = 0; i < 100; ++i) {
                 printf("%d\n", (int) ts[i]);
             }
@@ -576,7 +670,7 @@ int main(int argc, char *argv[]) {
                 ts[i] = end - start;
                 sum += ts[i];
             }
-            printf("ECDSA Kgen Time(μs): %lf\n" , double(sum) / 100);
+            printf("ECDSA Kgen Time(μs): %lf\n", double(sum) / 100);
             for (int i = 0; i < 100; ++i) {
                 printf("%d\n", (int) ts[i]);
             }
@@ -586,12 +680,12 @@ int main(int argc, char *argv[]) {
                 start = clock();
 
                 ret = enclave_ecc_sign(enclave_id,
-                                 &status,
-                                 data,
-                                 data_len,
-                                 &ecc_pri,
-                                 &ecc_sig,
-                                 (uint8_t*) &ecc_handle);
+                                       &status,
+                                       data,
+                                       data_len,
+                                       &ecc_pri,
+                                       &ecc_sig,
+                                       (uint8_t *) &ecc_handle);
 
                 if (ret != SGX_SUCCESS) {
                     DBG(OUTPUT, "103 error");
@@ -601,7 +695,7 @@ int main(int argc, char *argv[]) {
                 ts[i] = end - start;
                 sum += ts[i];
             }
-            printf("ECDSA Sign Time(μs): %lf\n" , double(sum) / 100);
+            printf("ECDSA Sign Time(μs): %lf\n", double(sum) / 100);
             for (int i = 0; i < 100; ++i) {
                 printf("%d\n", (int) ts[i]);
             }
@@ -611,13 +705,13 @@ int main(int argc, char *argv[]) {
                 start = clock();
 
                 ret = enclave_ecc_verify(enclave_id,
-                                 &status,
-                                 data,
-                                 data_len,
-                                 &ecc_pub,
-                                 &ecc_sig,
-                                 &result,
-                                 (uint8_t*) &ecc_handle);
+                                         &status,
+                                         data,
+                                         data_len,
+                                         &ecc_pub,
+                                         &ecc_sig,
+                                         &result,
+                                         (uint8_t *) &ecc_handle);
 
                 if (ret != SGX_SUCCESS) {
                     DBG(OUTPUT, "103 error");
@@ -628,7 +722,7 @@ int main(int argc, char *argv[]) {
                 ts[i] = end - start;
                 sum += ts[i];
             }
-            printf("ECDSA Verify Time(μs): %lf\n" , double(sum) / 100);
+            printf("ECDSA Verify Time(μs): %lf\n", double(sum) / 100);
             for (int i = 0; i < 100; ++i) {
                 printf("%d\n", (int) ts[i]);
             }
@@ -656,7 +750,7 @@ int main(int argc, char *argv[]) {
                                        data_len,
                                        &ecc_pri,
                                        &ecc_sig,
-                                       (uint8_t*) &ecc_handle);
+                                       (uint8_t *) &ecc_handle);
 
                 if (ret != SGX_SUCCESS) {
                     DBG(OUTPUT, "104 error");
@@ -666,7 +760,7 @@ int main(int argc, char *argv[]) {
                 ts[i] = double(end - start);
                 sum += ts[i];
             }
-            printf("ECC Decrypt Time(μs): %lf\n" , double(sum) / 100);
+            printf("ECC Decrypt Time(μs): %lf\n", double(sum) / 100);
             for (int i = 0; i < 100; ++i) {
                 printf("%d\n", (int) ts[i]);
             }
@@ -682,7 +776,7 @@ int main(int argc, char *argv[]) {
                                          &ecc_pub,
                                          &ecc_sig,
                                          &result,
-                                         (uint8_t*) &ecc_handle);
+                                         (uint8_t *) &ecc_handle);
 
                 if (ret != SGX_SUCCESS) {
                     DBG(OUTPUT, "104 error");
@@ -693,7 +787,7 @@ int main(int argc, char *argv[]) {
                 ts[i] = double(end - start);
                 sum += ts[i];
             }
-            printf("ECC Encrypt Time(μs): %lf\n" , double(sum) / 100);
+            printf("ECC Encrypt Time(μs): %lf\n", double(sum) / 100);
             for (int i = 0; i < 100; ++i) {
                 printf("%d\n", (int) ts[i]);
             }
