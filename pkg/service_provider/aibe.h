@@ -15,7 +15,9 @@
 #define BLOCK_MAX 8
 
 const int z_size = N + 1;
-const int ID = 0b10101010;
+const int ID = 0xAA;
+const int SN = 0xAAA;
+const int IDSN = 0xAAAAA;
 const char param_path[] = "param/aibe.param";
 const char mpk_path[] = "param/mpk.out";
 const char msk_path[] = "param/msk.out";
@@ -36,6 +38,9 @@ typedef struct dk_t {
 typedef struct ct_t {
     element_t c1, c2, c3, c4; // G1, G1, GT, GT
 };
+
+
+int get_idsn(int tid, int tsn);
 
 void ct_init(ct_t *ct, pairing_t pairing);
 
@@ -59,6 +64,7 @@ void data_xor(uint8_t *out, const uint8_t *d1, const uint8_t *d2, int size);
 
 class AibeAlgo {
 public:
+    int id, sn;
 
     // param elements
     element_t x; // Zr
@@ -140,6 +146,9 @@ public:
     int encrypt(uint8_t *ct_buf, const char *str, int id);
 
     void decrypt(uint8_t *msg, uint8_t *data, int size);
+
+    int idsn();
+
 };
 
 
@@ -701,6 +710,14 @@ bool AibeAlgo::dk_verify(dk_t &dkt) {
     return element_cmp(el, er) == 0;
 }
 
+int AibeAlgo::idsn() {
+
+    return get_idsn(id, sn);
+}
+
+int get_idsn(int tid, int tsn) {
+    return (tid << N_SN) + tsn;
+}
 
 void data_xor(uint8_t *out, const uint8_t *d1, const uint8_t *d2, int size) {
     uint8_t buffer[size];

@@ -104,7 +104,7 @@ App_Cpp_Flags := $(App_C_Flags) -std=c++11
 App_Link_Flags := $(SGX_COMMON_CFLAGS) \
 	-L$(IPP_LIBRARY_PATH) \
 	-L$(SGX_LIBRARY_PATH) -l$(Urts_Library_Name) \
-	-L. -lsgx_ukey_exchange -lpthread -lservice_provider -lgmp -lpbc -lssl -lcrypto\
+	-L. -lsgx_ukey_exchange -lpthread -lservice_provider -lgmp -lpbc -lssl -lcrypto -lcryptopp\
 	-Wl,-rpath=$(CURDIR)/sample_libcrypto \
 	-Wl,-rpath=$(CURDIR)
 

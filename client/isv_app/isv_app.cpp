@@ -40,7 +40,12 @@
 #include <limits.h>
 #include <unistd.h>
 #include <json.hpp>
-#include <openssl/ec.h>
+#include <cryptopp/eccrypto.h>
+#include <cryptopp/osrng.h>
+#include <cryptopp/hex.h>
+#include <cryptopp/oids.h>
+#include <cryptopp/pem.h>
+#include "cryptopp/files.h"
 
 // Needed for definition of remote attestation messages.
 #include "remote_attestation_result.h"
@@ -90,13 +95,12 @@
 //1--open   0--close
 #define test_enable (1)
 #define debug_enable (1)
-
 #define DBG(...) if(debug_enable)(fprintf(__VA_ARGS__))
 #define ELE_DBG(...) if(debug_enable)(element_fprintf(__VA_ARGS__))
-
-int id, sn, idsn;
+#define _T(x) x
 
 using json = nlohmann::json;
+using namespace CryptoPP;
 
 FILE *OUTPUT = stdout;
 
@@ -110,6 +114,103 @@ void getLocalTime(char *timeStr, int len, struct timeval tv) {
 
     sprintf(timeStr, "%s.%03ld", timeStr, milliseconds);
 }
+
+std::string get_sig(std::string message) {
+    AutoSeededRandomPool prng;
+    ECDSA<ECP, SHA256>::PrivateKey sk;
+    FileSource fs_pri("param/ec-pri.pem", true);
+    PEM_Load(fs_pri, sk);
+    ECDSA<ECP, SHA256>::Signer signer(sk);
+
+    size_t siglen = signer.MaxSignatureLength();
+    std::string sig(siglen, 0x00);
+    siglen = signer.SignMessage(prng, (const byte*)&message[0], message.size(), (byte*)&sig[0]);
+    sig.resize(siglen);
+
+    return sig;
+}
+
+int client_keyreq(NetworkClient client, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT, double &time) {
+
+    int ret = 0;
+    sgx_status_t status = SGX_SUCCESS;
+    ra_samp_request_header_t *p_request = NULL;
+    ra_samp_response_header_t *p_response = NULL;
+    int recvlen = 0;
+    int busy_retry_time;
+    int data_size;
+    int msg_size;
+    std::string msg_body;
+    std::string sig, str_idsn;
+    std::vector<uint8_t> vec_pms, vec_sig;
+
+//    test
+    clock_t st, et;
+
+    uint8_t p_data[LENOFMSE] = {0};
+
+    // get idsn signature
+    str_idsn = std::to_string(aibeAlgo.idsn());
+    sig = get_sig(str_idsn);
+    vec_sig = std::vector<uint8_t>(sig.c_str(), sig.c_str() + sig.size());
+
+    // get R and put into jason
+    aibeAlgo.keygen1(aibeAlgo.idsn());
+
+    data_size = aibeAlgo.size_comp_G1 * 2;
+    element_to_bytes_compressed(p_data, aibeAlgo.R);
+    element_to_bytes_compressed(p_data + aibeAlgo.size_comp_G1, aibeAlgo.Hz);
+    vec_pms = std::vector<uint8_t>(p_data, p_data + data_size);
+
+    DBG(stdout, "\nData of R and Hz\n");
+    PRINT_BYTE_ARRAY(stdout, p_data, data_size);
+
+    ELE_DBG(OUTPUT, "Send R:\n%B", aibeAlgo.R);
+
+    // construct json
+    json json1 = {
+            {"id",  aibeAlgo.id},
+            {"sn",  aibeAlgo.sn},
+            {"sig", vec_sig},
+            {"pms", vec_pms}
+    };
+    msg_body = json1.dump();
+
+    // construct request
+    msg_size = strlen(msg_body.c_str());
+    p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);
+    p_request->size = msg_size;
+    p_request->type = TYPE_LM_KEYREQ;
+    strcpy((char *)p_request->body, msg_body.c_str());
+
+    puts((char *) p_request->body);
+
+    // send request
+    memset(client.sendbuf, 0, BUFSIZ);
+    memcpy(client.sendbuf, p_request, sizeof(ra_samp_request_header_t) + msg_size);
+    client.SendTo(sizeof(ra_samp_request_header_t) + msg_size);
+
+    // recv
+    recvlen = client.RecvFrom();
+    p_response = (ra_samp_response_header_t *) malloc(
+            sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
+
+    memcpy(p_response, client.recvbuf, recvlen);
+    if ((p_response->type != TYPE_LM_KEYREQ)) {
+        DBG(stderr, "Error: INTERNAL ERROR - recv type error in [%s]-[%d].",
+            __FUNCTION__, __LINE__);
+        printf("%d\n", p_response->type);
+        ret = -1;
+        goto CLEANUP;
+    }
+    DBG(OUTPUT, "Certificate received");
+
+    CLEANUP:
+    SAFE_FREE(p_request);
+    SAFE_FREE(p_response);
+    return ret;
+}
+
 
 int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT, NetworkClient client,
                   double &time) {
@@ -148,23 +249,13 @@ int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *
     p_request->size = msg_size;
     p_request->type = TYPE_RA_KEYGEN;
 
-    if (memcpy_s(p_request->body, data_size, out_data, data_size)) {
-        DBG(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
-            __FUNCTION__, __LINE__);
-        ret = -1;
-        goto CLEANUP;
-    }
-    if (memcpy_s(p_request->body + data_size, SGX_AESGCM_MAC_SIZE, mac, SGX_AESGCM_MAC_SIZE)) {
-        DBG(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
-            __FUNCTION__, __LINE__);
-        ret = -1;
-        goto CLEANUP;
-    }
+    memcpy(p_request->body, out_data, data_size);
+    memcpy(p_request->body + data_size, mac, SGX_AESGCM_MAC_SIZE);
 
 //    PKG communication time
     st = clock();
     memset(client.sendbuf, 0, BUFSIZ);
-    memcpy_s(client.sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + msg_size);
+    memcpy(client.sendbuf, p_request, sizeof(ra_samp_request_header_t) + msg_size);
     client.SendTo(sizeof(ra_samp_request_header_t) + p_request->size);
 
     // keygen 3
@@ -175,14 +266,9 @@ int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *
     et = clock();
     time = et - st;
 
-    if (memcpy_s(p_response, recvlen, client.recvbuf, recvlen)) {
-        DBG(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
-            __FUNCTION__, __LINE__);
-        ret = -1;
-        goto CLEANUP;
-    }
+    memcpy(p_response, client.recvbuf, recvlen);
     if ((p_response->type != TYPE_RA_KEYGEN)) {
-        DBG(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
+        DBG(OUTPUT, "Error: INTERNAL ERROR - return type mismatch in [%s]-[%d].",
             __FUNCTION__, __LINE__);
         ret = -1;
         goto CLEANUP;
@@ -190,8 +276,8 @@ int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *
 
     data_size = p_response->size - SGX_AESGCM_MAC_SIZE;
 
-    memcpy_s(p_data, data_size, p_response->body, data_size);
-    memcpy_s(mac, SGX_AESGCM_MAC_SIZE, p_response->body + data_size, SGX_AESGCM_MAC_SIZE);
+    memcpy(p_data, p_response->body, data_size);
+    memcpy(mac, p_response->body + data_size, SGX_AESGCM_MAC_SIZE);
 //    DBG(OUTPUT, "Success Encrypt\n");
 //    PRINT_BYTE_ARRAY(OUTPUT, p_data, sizeof(p_data));
 //    DBG(OUTPUT, "Encrypt Mac\n");
@@ -224,66 +310,8 @@ int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *
     return ret;
 }
 
-// This sample code doesn't have any recovery/retry mechanisms for the remote
-// attestation. Since the enclave can be lost due S3 transitions, apps
-// susceptible to S3 transitions should have logic to restart attestation in
-// these scenarios.
-#define _T(x) x
 
-
-int client_keyreq(NetworkClient client) {
-
-    int ret = 0;
-    sgx_status_t status = SGX_SUCCESS;
-    ra_samp_request_header_t *p_request = NULL;
-    ra_samp_response_header_t *p_response = NULL;
-    int recvlen = 0;
-    int busy_retry_time;
-    int data_size;
-    int msg_size;
-
-    json json1 = {
-            {"id", id},
-            {"sn", sn}
-    };
-
-    msg_size = sizeof(int);
-    p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);
-    p_request->size = msg_size;
-    p_request->type = TYPE_LM_KEYREQ;
-    *((int *) p_request->body) = idsn;
-
-    memset(client.sendbuf, 0, BUFSIZ);
-    memcpy_s(client.sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + msg_size);
-    client.SendTo(sizeof(ra_samp_request_header_t) + msg_size);
-
-// recv
-    recvlen = client.RecvFrom();
-    p_response = (ra_samp_response_header_t *) malloc(
-            sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
-
-    if (memcpy_s(p_response, recvlen, client.recvbuf, recvlen)) {
-        DBG(stderr, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
-            __FUNCTION__, __LINE__);
-        ret = -1;
-        goto CLEANUP;
-    }
-    if ((p_response->type != TYPE_LM_KEYREQ)) {
-        DBG(stderr, "Error: INTERNAL ERROR - recv type error in [%s]-[%d].",
-            __FUNCTION__, __LINE__);
-        printf("%d\n", p_response->type);
-        ret = -1;
-        goto CLEANUP;
-    }
-    DBG(OUTPUT, "Certificate received");
-
-    CLEANUP:
-    SAFE_FREE(p_request);
-    SAFE_FREE(p_response);
-    return ret;
-}
-
-
+// todo: change to json
 int client_trace(NetworkClient client) {
 
     int ret = 0;
@@ -302,10 +330,10 @@ int client_trace(NetworkClient client) {
     p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);
     p_request->size = msg_size;
     p_request->type = TYPE_LM_TRACE;
-    *((int *) p_request->body) = idsn;
+    *((int *) p_request->body) = IDSN;
 
     memset(client.sendbuf, 0, BUFSIZ);
-    memcpy_s(client.sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + msg_size);
+    memcpy(client.sendbuf, p_request, sizeof(ra_samp_request_header_t) + msg_size);
     client.SendTo(sizeof(ra_samp_request_header_t) + msg_size);
 
 // recv
@@ -313,12 +341,7 @@ int client_trace(NetworkClient client) {
     p_response = (ra_samp_response_header_t *) malloc(
             sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
 
-    if (memcpy_s(p_response, recvlen, client.recvbuf, recvlen)) {
-        DBG(stderr, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
-            __FUNCTION__, __LINE__);
-        ret = -1;
-        goto CLEANUP;
-    }
+    memcpy(p_response, client.recvbuf, recvlen);
     if ((p_response->type != TYPE_LM_TRACE)) {
         DBG(stderr, "Error: INTERNAL ERROR - recv type error in [%s]-[%d].",
             __FUNCTION__, __LINE__);
@@ -331,7 +354,7 @@ int client_trace(NetworkClient client) {
     n = p_response->size / sizeof(timeval);
     tv_list = (timeval *) p_response->body;
 
-    fprintf(OUTPUT, "\nID: %d\n", idsn);
+    fprintf(OUTPUT, "\nID: %d\n", IDSN);
     for (int i = 0; i < n; ++i) {
         getLocalTime(timeStr, sizeof(timeStr), tv_list[i]);
         printf("<%d>: %s\n", i, timeStr);
@@ -347,7 +370,7 @@ int client_inspect(const std::string &dk2_path, AibeAlgo &aibeAlgo) {
     aibeAlgo.dk_load();
     aibeAlgo.dk2_load(dk2_path);
     aibeAlgo.mpk_load();
-    aibeAlgo.set_Hz(idsn);
+    aibeAlgo.set_Hz(IDSN);
 
     if (!aibeAlgo.dk_verify()) {
         printf("Client decrypt key is invalid!\n");
@@ -410,9 +433,8 @@ int main(int argc, char *argv[]) {
     double ts[10100], ts_pkg[10100];
     json j;
 
-    id = 0xAA;
-    sn = 0xAAA;
-    idsn = (id << 12) + sn;
+    aibeAlgo.id = ID;
+    aibeAlgo.sn = SN;
     //aibe load_param
 
 ////    aibe load_param
@@ -472,6 +494,30 @@ int main(int argc, char *argv[]) {
 
 
     switch (mod) {
+        case 0:
+
+        {
+            std::cout << "Generated client (vk, sk)" << std::endl;
+
+            std::string str_idsn = std::to_string(aibeAlgo.idsn());
+            AutoSeededRandomPool prng;
+            ECDSA<ECP, SHA256>::PrivateKey sk;
+            sk.Initialize(prng, ASN1::secp256r1());
+            ECDSA<ECP, SHA256>::Signer signer(sk);
+
+
+            ECDSA<ECP, SHA256>::PublicKey pk;
+            sk.MakePublicKey(pk);
+
+
+            FileSink fs_pri("param/ec-pri.pem", true);
+            PEM_Save(fs_pri, sk);
+
+            FileSink fs_pub("param/ec-pub.pem", true);
+            PEM_Save(fs_pub, pk);
+
+        }
+        break;
 
         case 1:
             // Encrypt
@@ -480,9 +526,6 @@ int main(int argc, char *argv[]) {
             DBG(OUTPUT, "Start Encrypt\n");
             std::cout << "Receiver ID: " << std::endl;
 //            std::cin >> id;
-            id = 0xAA;
-            sn = 0xAAA;
-            idsn = (id << 12) + sn;
 
             f = fopen(msg_path, "r+");
             msg_size = fread(msg_buf, sizeof(uint8_t), aibeAlgo.size_ct, f);
@@ -491,12 +534,12 @@ int main(int argc, char *argv[]) {
             fprintf(OUTPUT, "Message:\n%s\n", msg_buf);
             DBG(OUTPUT, "Message size: %d\n", msg_size);
 
-            ct_size = aibeAlgo.encrypt(ct_buf, (char *) msg_buf, idsn);
+            ct_size = aibeAlgo.encrypt(ct_buf, (char *) msg_buf, aibeAlgo.idsn());
 
             ct = std::vector<uint8_t>(ct_buf, ct_buf + ct_size);
             j = json{
-                    {"id",      id},
-                    {"sn",      sn},
+                    {"id",      ID},
+                    {"sn",      SN},
                     {"ct",      ct}
             };
 
@@ -509,6 +552,7 @@ int main(int argc, char *argv[]) {
         case 2:
 
             sum = sum_pkg = 0;
+            aibeAlgo.mpk_load();
             for (int i = 0; i < loops; ++i) {
                 start = clock();
 
@@ -517,7 +561,7 @@ int main(int argc, char *argv[]) {
                     ret = -1;
                     goto CLEANUP;
                 }
-                client_keyreq(client);
+                client_keyreq(client, aibeAlgo, enclave_id, OUTPUT, ts_pkg[i]);
                 DBG(OUTPUT, "Key request finished\n");
 //                ts_pkg[i] += ra_temp;
                 end = clock();
@@ -554,7 +598,7 @@ int main(int argc, char *argv[]) {
 
                 DBG(OUTPUT, "Client: setup finished");
 ////    aibe: keygen
-                if (client_keygen(idsn, aibeAlgo, enclave_id, OUTPUT, client, ts_pkg[i])) {
+                if (client_keygen(aibeAlgo.idsn(), aibeAlgo, enclave_id, OUTPUT, client, ts_pkg[i])) {
                     DBG(stderr, "Key verify failed\n");
                     goto CLEANUP;
                 }
@@ -579,8 +623,8 @@ int main(int argc, char *argv[]) {
 
             std::ifstream(ct_path) >> j;
             j.at("ct").get_to(ct);
-            j.at("id").get_to(id);
-            j.at("sn").get_to(sn);
+            j.at("id").get_to(aibeAlgo.id);
+            j.at("sn").get_to(aibeAlgo.sn);
             ct_size = ct.size();
 
             DBG(OUTPUT, "decrypt size: %d, ct size: %zu\n", ct_size, ct.size());
@@ -676,7 +720,7 @@ int main(int argc, char *argv[]) {
             aibeAlgo.mpk_load();
             DBG(OUTPUT, "Client: setup finished");
 ////    aibe: keygen
-            if (client_keygen(idsn, aibeAlgo, enclave_id, OUTPUT, client, sum_pkg)) {
+            if (client_keygen(aibeAlgo.idsn(), aibeAlgo, enclave_id, OUTPUT, client, sum_pkg)) {
                 DBG(stderr, "Key verify failed\n");
                 goto CLEANUP;
             }

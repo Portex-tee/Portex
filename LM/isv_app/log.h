@@ -12,8 +12,11 @@
 #include <vector>
 #include <chrono>
 #include <sys/time.h>
+#include <json.hpp>
 
 #include <openssl/sha.h>
+
+using json = nlohmann::json;
 
 typedef merkle::TreeT<32, merkle::sha256_openssl> ChronTreeT;
 
@@ -125,11 +128,11 @@ int Proofs::deserialise(uint8_t *bytes) {
 class LogTree {
 public:
     ChronTreeT chronTree;
-    std::map<int, std::vector<timeval>> lexTree;
+    std::map<int, std::vector<std::string>> lexTree;
 
-    int append(int id, timeval &tv, ChronTreeT::Hash hash, Proofs &prf);
+    int append(int id, const std::string& node, ChronTreeT::Hash hash, Proofs &prf);
 
-    int trace(int ID, timeval *tvs);
+    void trace(int ID, std::vector<json> &lst);
 
     int merkle_test() {
         std::string srcStr = "message", encodedHexStr;
@@ -149,16 +152,15 @@ public:
     }
 };
 
-std::string get_timestamp(int id, timeval &tv) {
+std::string get_timestamp(timeval &tv) {
 //    printf("%ld\t%ld\n", tv.tv_usec, tv.tv_sec);
-    std::string image_n = std::to_string(id) + ":" + std::to_string(tv.tv_sec) + "_" + std::to_string(tv.tv_usec);
+    std::string image_n = std::to_string(tv.tv_sec) + "_" + std::to_string(tv.tv_usec);
     return image_n;
 }
 
-
-int LogTree::append(int id, timeval &tv, ChronTreeT::Hash hash, Proofs &prf) {
+int LogTree::append(int id, const std::string& node, ChronTreeT::Hash hash, Proofs &prf) {
     int ret = 0;
-    lexTree[id].push_back(tv);
+    lexTree[id].push_back(node);
 //    std::cout << "---------" << id << ' ' << lexTree[id].size() << ' ' << chronTree.size() << std::endl;
     prf.node = hash;
     chronTree.insert(hash);
@@ -167,22 +169,16 @@ int LogTree::append(int id, timeval &tv, ChronTreeT::Hash hash, Proofs &prf) {
     return ret;
 }
 
-int LogTree::trace(int ID, timeval *tvs) {
+void LogTree::trace(int ID, std::vector<json> &lst) {
     if (lexTree.find(ID) == lexTree.end()) {
-        return 0;
+        return;
     }
 
-    int n = 0;
     auto &vec = lexTree[ID];
 
-    for (auto & it : vec) {
-        tvs[n].tv_sec = it.tv_sec;
-        tvs[n].tv_usec = it.tv_usec;
-        ++n;
+    for (auto & i : vec) {
+        lst.push_back(json::parse(i));
     }
-    std::cout << n << std::endl;
-
-    return n;
 }
 
 

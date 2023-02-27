@@ -37,6 +37,7 @@
 #include <stdio.h>
 #include <limits.h>
 #include <unistd.h>
+#include <json.hpp>
 // Needed for definition of remote attestation messages.
 #include "remote_attestation_result.h"
 
@@ -82,6 +83,7 @@
 
 #define ENCLAVE_PATH "isv_enclave.signed.so"
 
+using json = nlohmann::json;
 extern char sendbuf[BUFSIZ]; //数据传送的缓冲区
 extern char recvbuf[BUFSIZ];
 
@@ -92,7 +94,7 @@ extern char recvbuf[BUFSIZ];
 #define _T(x) x
 
 
-int lm_keyreq(const ra_samp_request_header_t *p_msg,
+int lm_keyreq(const uint8_t *p_msg,
               uint32_t msg_size,
               LogTree &logTree,
               sgx_enclave_id_t enclave_id,
@@ -107,19 +109,40 @@ int lm_keyreq(const ra_samp_request_header_t *p_msg,
     ra_samp_request_header_t *p_request = NULL;
     ra_samp_response_header_t *p_response = NULL;
     int data_size, msg2_size, recvlen;
-
+    std::vector<uint8_t> vec_pms, vec_sig;
 
     timeval tv = {};
     gettimeofday(&tv, NULL);
 
-    std::string srcStr;
-    int id;
+    std::string j_str, ts;
+    int id, sn, idsn;
 
-    id = *((int*)p_msg);
-    srcStr = get_timestamp(id, tv);
-    sha256(srcStr, encodedHexStr);
+    // parse json
+    json json1;
+    {
+        std::string msg_body((char *) p_msg);
+        std::cout << msg_body << std::endl;
+        json1 = json::parse(msg_body);
+    }
+    json1.at("id").get_to(id);
+    json1.at("sn").get_to(sn);
+    json1.at("sig").get_to(vec_sig);
+    json1.at("pms").get_to(vec_pms);
+
+    // construct node json
+    ts = get_timestamp(tv);
+    json j_node{
+            json1.at("id"),
+            json1.at("sn"),
+            json1.at("sig"),
+            {"ts", ts}
+    };
+
+    // MT.Insert
+    j_str = j_node.dump();
+    sha256(j_str, encodedHexStr);
     ChronTreeT::Hash hash(encodedHexStr);
-    logTree.append(id, tv, hash, proofs);
+    logTree.append(id, j_str, hash, proofs);
 
     msg2_size = proofs.serialise(data);
     p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg2_size);
@@ -140,7 +163,8 @@ int lm_keyreq(const ra_samp_request_header_t *p_msg,
     client.SendTo(sizeof(ra_samp_request_header_t) + p_request->size);
 
     recvlen = client.RecvFrom();
-    p_response = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
+    p_response = (ra_samp_response_header_t *) malloc(
+            sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
 
     if (memcpy_s(p_response, recvlen, client.recvbuf, recvlen)) {
         fprintf(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
@@ -171,11 +195,11 @@ int lm_keyreq(const ra_samp_request_header_t *p_msg,
 }
 
 int lm_trace(const ra_samp_request_header_t *p_msg,
-              uint32_t msg_size,
-              LogTree &logTree,
-              sgx_enclave_id_t enclave_id,
-              FILE *OUTPUT,
-              NetworkServer server) {
+             uint32_t msg_size,
+             LogTree &logTree,
+             sgx_enclave_id_t enclave_id,
+             FILE *OUTPUT,
+             NetworkServer server) {
 
 
     int ret = 0;
@@ -184,25 +208,32 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
     std::string encodedHexStr;
     ra_samp_response_header_t *p_response = NULL;
     int data_size, msg2_size, recvlen;
+    std::vector<json> jv;
 
     timeval tv = {};
     gettimeofday(&tv, NULL);
 
-    std::string srcStr;
-    int n, id = *((int*)p_msg);
+    int id = *((int *) p_msg);
 
-    timeval tv_list[100];
-    n = logTree.trace(id, tv_list);
+    // log trace
+    logTree.trace(id, jv);
     fprintf(OUTPUT, "\nID: %d\n", id);
-    for (int i = 0; i < n; ++i) {
-        fprintf(OUTPUT, "--%ld_%ld\n", tv_list[i].tv_sec, tv_list[i].tv_usec);
+    for (auto & i : jv) {
+        std::cout << i.dump() << std::endl;
     }
 
-    p_response = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t) + n * sizeof(timeval));
+    // construct response json
+    json j_data = {
+            {"id", id},
+            {"jv", jv}
+    };
+    std::string str_data = j_data.dump();
 
+    // construct response
+    p_response = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t) + strlen(str_data.c_str()));
     p_response->type = TYPE_LM_TRACE;
-    p_response->size = n * sizeof(timeval);
-    memcpy(p_response->body, tv_list, p_response->size);
+    p_response->size = strlen(str_data.c_str());
+    strcpy((char *)p_response->body, str_data.c_str());
     memset(server.sendbuf, 0, BUFSIZ);
     memcpy_s(server.sendbuf, BUFSIZ, p_response, sizeof(ra_samp_response_header_t) + p_response->size);
     server.SendTo(sizeof(ra_samp_response_header_t) + p_response->size);
@@ -212,8 +243,7 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
     return ret;
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     int ret = 0;
     sgx_enclave_id_t enclave_id = 0;
     FILE *OUTPUT = stdout;
@@ -243,8 +273,7 @@ int main(int argc, char *argv[])
                                  &launch_token,
                                  &launch_token_update,
                                  &enclave_id, NULL);
-        if (SGX_SUCCESS != ret)
-        {
+        if (SGX_SUCCESS != ret) {
             ret = -1;
             fprintf(OUTPUT, "Error, call sgx_create_enclave fail [%s].\n",
                     __FUNCTION__);
@@ -282,28 +311,25 @@ int main(int argc, char *argv[])
                         fprintf(OUTPUT, "LM key request\n");
 
                         // SOCKET: connect to server
-                        if (client.client("127.0.0.1", 12333) != 0)
-                        {
+                        if (client.client("127.0.0.1", 12333) != 0) {
                             fprintf(OUTPUT, "Connect Server Error, Exit!\n");
                             ret = -1;
                             goto CLEANUP;
                         }
 
-                        if (remote_attestation(enclave_id, client) != SGX_SUCCESS)
-                        {
+                        if (remote_attestation(enclave_id, client) != SGX_SUCCESS) {
                             fprintf(OUTPUT, "Remote Attestation Error, Exit!\n");
                             ret = -1;
                             goto CLEANUP;
                         }
 
-                        lm_keyreq((const ra_samp_request_header_t *) ((uint8_t *) p_req +
-                                                                      sizeof(ra_samp_request_header_t)),
-                                      p_req->size,
-                                      logTree,
-                                      enclave_id,
-                                      OUTPUT,
-                                      client,
-                                      server);
+                        lm_keyreq((uint8_t *) p_req + sizeof(ra_samp_request_header_t),
+                                  p_req->size,
+                                  logTree,
+                                  enclave_id,
+                                  OUTPUT,
+                                  client,
+                                  server);
 
                         SAFE_FREE(p_req);
                         is_recv = false;
@@ -314,12 +340,12 @@ int main(int argc, char *argv[])
                         fprintf(OUTPUT, "LM key request\n");
 
                         lm_trace((const ra_samp_request_header_t *) ((uint8_t *) p_req +
-                                                                      sizeof(ra_samp_request_header_t)),
-                                  p_req->size,
-                                  logTree,
-                                  enclave_id,
-                                  OUTPUT,
-                                  server);
+                                                                     sizeof(ra_samp_request_header_t)),
+                                 p_req->size,
+                                 logTree,
+                                 enclave_id,
+                                 OUTPUT,
+                                 server);
 
                         SAFE_FREE(p_req);
                         is_recv = false;
@@ -347,7 +373,7 @@ int main(int argc, char *argv[])
 
     //aibe load_param
 
-CLEANUP:
+    CLEANUP:
     terminate(client);
     client.Cleanupsocket();
     sgx_destroy_enclave(enclave_id);
