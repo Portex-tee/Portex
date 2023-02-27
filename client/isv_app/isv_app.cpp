@@ -38,6 +38,8 @@
 #include <stdio.h>
 #include <limits.h>
 #include <unistd.h>
+#include <openssl/ec.h>
+
 // Needed for definition of remote attestation messages.
 #include "remote_attestation_result.h"
 
@@ -799,6 +801,26 @@ int main(int argc, char *argv[]) {
             sum = 0;
 
             enclave_use(enclave_id);
+
+
+            for (int i = 0; i < 100; ++i) {
+                start = clock();
+
+                enclave_ecc_init(enclave_id,
+                                 &status,
+                                 &ecc_pri,
+                                 &ecc_pub,
+                                 &ecc_handle);
+
+
+                end = clock();
+                ts[i] = double(end - start);
+                sum += ts[i];
+            }
+            printf("ECC KGen Time(μs): %lf\n", double(sum) / 100);
+            for (int i = 0; i < 100; ++i) {
+                printf("%d\n", (int) ts[i]);
+            }
 
             for (int i = 0; i < 100; ++i) {
                 start = clock();

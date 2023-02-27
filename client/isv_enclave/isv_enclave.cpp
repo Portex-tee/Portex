@@ -36,6 +36,9 @@
 #include "sgx_tcrypto.h"
 #include "string.h"
 #include "stdio.h"
+#include <openssl/ec.h>
+#include "tSgxSSL_api.h"
+#include <openssl/objects.h>
 
 // This is the public EC key of the SP. The corresponding private EC key is
 // used by the SP to sign data used in the remote attestation SIGMA protocol
