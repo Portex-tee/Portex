@@ -33,11 +33,13 @@
 // and an ISV Application Server.
 
 #include <iostream>
+#include <fstream>
 #include <ctime>
 #include "ra.h"
 #include <stdio.h>
 #include <limits.h>
 #include <unistd.h>
+#include <json.hpp>
 #include <openssl/ec.h>
 
 // Needed for definition of remote attestation messages.
@@ -85,10 +87,16 @@
 
 #define ENCLAVE_PATH "isv_enclave.signed.so"
 
-#define debug_enable (1)  //1---open   0---close
+//1--open   0--close
+#define test_enable (1)
+#define debug_enable (1)
 
 #define DBG(...) if(debug_enable)(fprintf(__VA_ARGS__))
 #define ELE_DBG(...) if(debug_enable)(element_fprintf(__VA_ARGS__))
+
+int id, sn, idsn;
+
+using json = nlohmann::json;
 
 FILE *OUTPUT = stdout;
 
@@ -234,11 +242,16 @@ int client_keyreq(NetworkClient client) {
     int data_size;
     int msg_size;
 
+    json json1 = {
+            {"id", id},
+            {"sn", sn}
+    };
+
     msg_size = sizeof(int);
     p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);
     p_request->size = msg_size;
     p_request->type = TYPE_LM_KEYREQ;
-    *((int *) p_request->body) = ID;
+    *((int *) p_request->body) = idsn;
 
     memset(client.sendbuf, 0, BUFSIZ);
     memcpy_s(client.sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + msg_size);
@@ -289,7 +302,7 @@ int client_trace(NetworkClient client) {
     p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);
     p_request->size = msg_size;
     p_request->type = TYPE_LM_TRACE;
-    *((int *) p_request->body) = ID;
+    *((int *) p_request->body) = idsn;
 
     memset(client.sendbuf, 0, BUFSIZ);
     memcpy_s(client.sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + msg_size);
@@ -318,7 +331,7 @@ int client_trace(NetworkClient client) {
     n = p_response->size / sizeof(timeval);
     tv_list = (timeval *) p_response->body;
 
-    fprintf(OUTPUT, "\nID: %d\n", ID);
+    fprintf(OUTPUT, "\nID: %d\n", idsn);
     for (int i = 0; i < n; ++i) {
         getLocalTime(timeStr, sizeof(timeStr), tv_list[i]);
         printf("<%d>: %s\n", i, timeStr);
@@ -330,11 +343,11 @@ int client_trace(NetworkClient client) {
     return ret;
 }
 
-int client_inspect(const std::string& dk2_path, AibeAlgo &aibeAlgo) {
+int client_inspect(const std::string &dk2_path, AibeAlgo &aibeAlgo) {
     aibeAlgo.dk_load();
     aibeAlgo.dk2_load(dk2_path);
     aibeAlgo.mpk_load();
-    aibeAlgo.set_Hz(ID);
+    aibeAlgo.set_Hz(idsn);
 
     if (!aibeAlgo.dk_verify()) {
         printf("Client decrypt key is invalid!\n");
@@ -349,8 +362,8 @@ int client_inspect(const std::string& dk2_path, AibeAlgo &aibeAlgo) {
     printf("Input decrypt key is valid!\n");
 
     if (element_cmp(aibeAlgo.dk.d1, aibeAlgo.dk2.d1)
-    || element_cmp(aibeAlgo.dk.d2, aibeAlgo.dk2.d2)
-    || element_cmp(aibeAlgo.dk.d3, aibeAlgo.dk2.d3)) {
+        || element_cmp(aibeAlgo.dk.d2, aibeAlgo.dk2.d2)
+        || element_cmp(aibeAlgo.dk.d3, aibeAlgo.dk2.d3)) {
         printf("Another valid key detected!\n");
         return 1;
     }
@@ -374,6 +387,7 @@ int main(int argc, char *argv[]) {
     int ct_size, msg_size;
     std::string dk2_path;
 
+
     // test
 
     sgx_status_t status = SGX_SUCCESS;
@@ -394,7 +408,11 @@ int main(int argc, char *argv[]) {
     clock_t start, end;
     double sum, sum_pkg, ra_temp;
     double ts[10100], ts_pkg[10100];
+    json j;
 
+    id = 0xAA;
+    sn = 0xAAA;
+    idsn = (id << 12) + sn;
     //aibe load_param
 
 ////    aibe load_param
@@ -405,6 +423,8 @@ int main(int argc, char *argv[]) {
 //    printf("%d, %d, %d\n", aibeAlgo.size_GT, aibeAlgo.size_comp_G1, aibeAlgo.size_Zr);
     uint8_t ct_buf[aibeAlgo.size_ct + 10];
     uint8_t msg_buf[aibeAlgo.size_ct + 10];
+    std::vector<uint8_t> ct;
+    std::vector<uint8_t> msg;
     DBG(OUTPUT, "A-IBE Success Set Up\n");
 ////    element init
     aibeAlgo.init();
@@ -431,7 +451,7 @@ int main(int argc, char *argv[]) {
 //    aibeAlgo.mpk_load();
 //    element_random(aibeAlgo.m);
 //    element_printf("%B\n", aibeAlgo.m);
-//    aibeAlgo.block_encrypt(ID);
+//    aibeAlgo.block_encrypt(idsn);
 //    aibeAlgo.ct_write();
 //    aibeAlgo.ct_read();
 //    aibeAlgo.block_decrypt();
@@ -441,18 +461,52 @@ int main(int argc, char *argv[]) {
         data[i] = i / 10;
     }
     printf("Please choose a function:\n"
-           "1) key request\n"
-           "2) key generation\n"
-           "3) encrypt\n"
-           "4) decrypt\n"
-           "5) log trace\n"
-           "6) tee inspect\n"
+           "1) encrypt\n"
+           "2) key request\n"
+           "20) key generation\n"
+           "3) decrypt\n"
+           "4) log trace\n"
+           "5) tee inspect\n"
            "Please input a number:");
     scanf("%d", &mod);
 
 
     switch (mod) {
+
         case 1:
+            // Encrypt
+            aibeAlgo.mpk_load();
+            DBG(OUTPUT, "Client: setup finished");
+            DBG(OUTPUT, "Start Encrypt\n");
+            std::cout << "Receiver ID: " << std::endl;
+//            std::cin >> id;
+            id = 0xAA;
+            sn = 0xAAA;
+            idsn = (id << 12) + sn;
+
+            f = fopen(msg_path, "r+");
+            msg_size = fread(msg_buf, sizeof(uint8_t), aibeAlgo.size_ct, f);
+            fclose(f);
+
+            fprintf(OUTPUT, "Message:\n%s\n", msg_buf);
+            DBG(OUTPUT, "Message size: %d\n", msg_size);
+
+            ct_size = aibeAlgo.encrypt(ct_buf, (char *) msg_buf, idsn);
+
+            ct = std::vector<uint8_t>(ct_buf, ct_buf + ct_size);
+            j = json{
+                    {"id",      id},
+                    {"sn",      sn},
+                    {"ct",      ct}
+            };
+
+            std::ofstream(ct_path) << j;
+
+            DBG(OUTPUT, "encrypt size: %d, block size %d\n", ct_size, aibeAlgo.size_block);
+
+            break;
+
+        case 2:
 
             sum = sum_pkg = 0;
             for (int i = 0; i < loops; ++i) {
@@ -473,11 +527,10 @@ int main(int argc, char *argv[]) {
             }
 
 //            printf("%d,%lf\n", N, sum / loops);
-
             break;
 
-        case 2:
-
+        case 20:
+// KGen
             sum = sum_pkg = 0;
             aibeAlgo.mpk_load();
             for (int i = 0; i < loops; ++i) {
@@ -501,7 +554,7 @@ int main(int argc, char *argv[]) {
 
                 DBG(OUTPUT, "Client: setup finished");
 ////    aibe: keygen
-                if (client_keygen(ID, aibeAlgo, enclave_id, OUTPUT, client, ts_pkg[i])) {
+                if (client_keygen(idsn, aibeAlgo, enclave_id, OUTPUT, client, ts_pkg[i])) {
                     DBG(stderr, "Key verify failed\n");
                     goto CLEANUP;
                 }
@@ -519,36 +572,20 @@ int main(int argc, char *argv[]) {
             break;
 
         case 3:
-            aibeAlgo.mpk_load();
-            DBG(OUTPUT, "Client: setup finished");
-            DBG(OUTPUT, "Start Encrypt\n");
-            f = fopen(msg_path, "r+");
-            msg_size = fread(msg_buf, sizeof(uint8_t), aibeAlgo.size_ct, f);
-            fclose(f);
-
-            DBG(OUTPUT, "Message:\n%s\n", msg_buf);
-            DBG(OUTPUT, "Message size: %d\n", msg_size);
-
-
-            ct_size = aibeAlgo.encrypt(ct_buf, (char *) msg_buf, ID);
-            f = fopen(ct_path, "w+");
-            fwrite(ct_buf, ct_size, 1, f);
-            fclose(f);
-
-            DBG(OUTPUT, "encrypt size: %d, block size %d\n", ct_size, aibeAlgo.size_block);
-
-            break;
-
-        case 4:
             aibeAlgo.dk_load();
             aibeAlgo.mpk_load();
-            DBG(OUTPUT, "Client: setup finished");
+            DBG(OUTPUT, "Client: setup finished\n");
             DBG(OUTPUT, "Start Decrypt\n");
 
-            f = fopen(ct_path, "r+");
-            ct_size = fread(ct_buf, sizeof(uint8_t), aibeAlgo.size_ct, f);
-            fclose(f);
-            DBG(OUTPUT, "decrypt size: %d, ct size: %d\n", ct_size, aibeAlgo.size_ct);
+            std::ifstream(ct_path) >> j;
+            j.at("ct").get_to(ct);
+            j.at("id").get_to(id);
+            j.at("sn").get_to(sn);
+            ct_size = ct.size();
+
+            DBG(OUTPUT, "decrypt size: %d, ct size: %zu\n", ct_size, ct.size());
+
+            std::copy(ct.begin(), ct.end(), ct_buf);
 
             aibeAlgo.decrypt(msg_buf, ct_buf, ct_size);
             printf("%s\n", msg_buf);
@@ -559,7 +596,7 @@ int main(int argc, char *argv[]) {
 
             break;
 
-        case 5:
+        case 4:
 
             if (client.client("127.0.0.1", lm_port) != 0) {
                 DBG(OUTPUT, "Connect Server Error, Exit!\n");
@@ -572,7 +609,7 @@ int main(int argc, char *argv[]) {
             break;
 
 
-        case 6:
+        case 5:
 
             printf("Please input decrypt key file path:\n");
             std::cin >> dk2_path;
@@ -639,7 +676,7 @@ int main(int argc, char *argv[]) {
             aibeAlgo.mpk_load();
             DBG(OUTPUT, "Client: setup finished");
 ////    aibe: keygen
-            if (client_keygen(ID, aibeAlgo, enclave_id, OUTPUT, client, sum_pkg)) {
+            if (client_keygen(idsn, aibeAlgo, enclave_id, OUTPUT, client, sum_pkg)) {
                 DBG(stderr, "Key verify failed\n");
                 goto CLEANUP;
             }

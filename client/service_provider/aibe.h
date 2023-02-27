@@ -9,7 +9,9 @@
 #include <pbc/pbc_test.h>
 #include <cmath>
 
-#define N ((int)(1 << 4))
+#define N_ID (8)
+#define N_SN (12)
+#define N (N_ID + N_SN)
 #define BLOCK_MAX 8
 
 const int z_size = N + 1;

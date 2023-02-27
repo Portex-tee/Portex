@@ -33,7 +33,7 @@
 // and an ISV Application Server.
 
 #include "log.h"
-#include "aibe.h"
+#include "../service_provider/aibe.h"
 #include <stdio.h>
 #include <limits.h>
 #include <unistd.h>
