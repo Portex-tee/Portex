@@ -11,10 +11,10 @@
 
 #define N_ID (8)
 #define N_SN (12)
-#define N (N_ID + N_SN)
+#define N_IDSN (N_ID + N_SN)
 #define BLOCK_MAX 8
 
-const int z_size = N + 1;
+const int z_size = N_IDSN + 1;
 const int ID = 0xAA;
 const int SN = 0xAAA;
 const int IDSN = 0xAAAAA;
@@ -28,7 +28,7 @@ const char out_path[] = "out.txt";
 
 
 typedef struct mpk_t {
-    element_t X, Y, h, Z[N + 1];
+    element_t X, Y, h, Z[N_IDSN + 1];
 } mpk_t;
 
 typedef struct dk_t {
@@ -153,7 +153,7 @@ public:
 
 
 int get_bit(int id, int n) {
-    return (id >> (N - n)) & 1;
+    return (id >> (N_IDSN - n)) & 1;
 }
 
 void ct_init(ct_t *ct, pairing_t pairing) {
@@ -174,7 +174,7 @@ void mpk_init(mpk_t *mpk, pairing_t pairing) {
     element_init_G1(mpk->h, pairing);
     element_init_G1(mpk->X, pairing);
     element_init_G1(mpk->Y, pairing);
-    for (int i = 0; i <= N; ++i) {
+    for (int i = 0; i <= N_IDSN; ++i) {
         element_init_G1(mpk->Z[i], pairing);
     }
 }
@@ -183,7 +183,7 @@ void mpk_clear(mpk_t *mpk) {
     element_clear(mpk->h);
     element_clear(mpk->X);
     element_clear(mpk->Y);
-    for (int i = 0; i <= N; ++i) {
+    for (int i = 0; i <= N_IDSN; ++i) {
         element_clear(mpk->Z[i]);
     }
 }
@@ -322,7 +322,7 @@ void AibeAlgo::pkg_setup_generate(const char *pk_path, const char *sk_path) {
     element_random(mpk.h);
     element_random(mpk.Y);
     element_random(x);
-    for (int i = 0; i < N; ++i) {
+    for (int i = 0; i < N_IDSN; ++i) {
         element_random(mpk.Z[i]);
     }
     element_pow_zn(mpk.X, g, x);
@@ -337,7 +337,7 @@ void AibeAlgo::pkg_setup_generate(const char *pk_path, const char *sk_path) {
     fwrite(buffer, size_comp_G1, 1, fpk);
     element_to_bytes_compressed(buffer, mpk.h);
     fwrite(buffer, size_comp_G1, 1, fpk);
-    for (int i = 0; i < N; ++i) {
+    for (int i = 0; i < N_IDSN; ++i) {
         element_to_bytes_compressed(buffer, mpk.Z[i]);
         fwrite(buffer, size_comp_G1, 1, fpk);
     }
@@ -349,7 +349,7 @@ void AibeAlgo::pkg_setup_generate(const char *pk_path, const char *sk_path) {
 //    element_printf("%B\n", mpk.X);
 //    element_printf("%B\n", mpk.Y);
 //    element_printf("%B\n", mpk.h);
-//    for (int i = 0; i < N; ++i) {
+//    for (int i = 0; i < N_IDSN; ++i) {
 //        element_printf("%B\n", mpk.Z[i]);
 //    }
 //    element_printf("%B\n", x);
@@ -376,7 +376,7 @@ void AibeAlgo::mpk_load() {
     fread(buffer, size_comp_G1, 1, fpk);
     element_from_bytes_compressed(mpk.h, (unsigned char *) buffer);
 
-    for (int i = 0; i < N; ++i) {
+    for (int i = 0; i < N_IDSN; ++i) {
         fread(buffer, size_comp_G1, 1, fpk);
         element_from_bytes_compressed(mpk.Z[i], (unsigned char *) buffer);
     }
@@ -386,7 +386,7 @@ void AibeAlgo::mpk_load() {
 //    element_printf("%B\n", mpk.X);
 //    element_printf("%B\n", mpk.Y);
 //    element_printf("%B\n", mpk.h);
-//    for (int i = 0; i < N; ++i) {
+//    for (int i = 0; i < N_IDSN; ++i) {
 //        element_printf("%B\n", mpk.Z[i]);
 //    }
 //    element_printf("%B\n", x);

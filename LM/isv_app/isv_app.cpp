@@ -109,7 +109,7 @@ int lm_keyreq(const uint8_t *p_msg,
     ra_samp_request_header_t *p_request = NULL;
     ra_samp_response_header_t *p_response = NULL;
     int data_size, msg2_size, recvlen;
-    std::vector<uint8_t> vec_pms, vec_sig;
+    std::vector<uint8_t> vec_sig, vec_prf, vec_pms;
 
     timeval tv = {};
     gettimeofday(&tv, NULL);
@@ -132,36 +132,44 @@ int lm_keyreq(const uint8_t *p_msg,
     // construct node json
     ts = get_timestamp(tv);
     json j_node{
-            json1.at("id"),
-            json1.at("sn"),
-            json1.at("sig"),
+            {"id", id},
+            {"sn", sn},
+            {"sig", vec_sig},
             {"ts", ts}
     };
 
     // MT.Insert
     j_str = j_node.dump();
+    std::cout << "jnode" << j_node << std::endl;
     sha256(j_str, encodedHexStr);
     ChronTreeT::Hash hash(encodedHexStr);
     logTree.append(id, j_str, hash, proofs);
 
+    // Parse proofs to json
     msg2_size = proofs.serialise(data);
+    vec_prf = std::vector<uint8_t>(data, data + msg2_size);
+
+    json j_req{
+            {"prf", vec_prf},
+            {"pms", vec_pms}
+    };
+    std::string str_body;
+    str_body = j_req.dump();
+    std::cout << str_body << std::endl;
+    msg2_size = str_body.size() + 1;
+
+    // send request to pkg
     p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg2_size);
     p_request->type = TYPE_RA_KEYREQ;
     p_request->size = msg2_size;
 
-    memcpy_s(p_request->body, msg2_size, data, msg2_size);
-
-    if (memcpy_s(p_request->body, msg2_size, data, msg2_size)) {
-        fprintf(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
-                __FUNCTION__, __LINE__);
-        ret = -1;
-        goto CLEANUP;
-    }
+    strcpy((char *)p_request->body, str_body.c_str());
 
     memset(client.sendbuf, 0, BUFSIZ);
     memcpy_s(client.sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + msg2_size);
     client.SendTo(sizeof(ra_samp_request_header_t) + p_request->size);
 
+    // recv
     recvlen = client.RecvFrom();
     p_response = (ra_samp_response_header_t *) malloc(
             sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
@@ -228,11 +236,12 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
             {"jv", jv}
     };
     std::string str_data = j_data.dump();
+    msg2_size = str_data.size() + 1;
 
     // construct response
-    p_response = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t) + strlen(str_data.c_str()));
+    p_response = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t) + msg2_size);
     p_response->type = TYPE_LM_TRACE;
-    p_response->size = strlen(str_data.c_str());
+    p_response->size = msg2_size;
     strcpy((char *)p_response->body, str_data.c_str());
     memset(server.sendbuf, 0, BUFSIZ);
     memcpy_s(server.sendbuf, BUFSIZ, p_response, sizeof(ra_samp_response_header_t) + p_response->size);

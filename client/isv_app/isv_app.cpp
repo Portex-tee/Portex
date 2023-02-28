@@ -124,13 +124,13 @@ std::string get_sig(std::string message) {
 
     size_t siglen = signer.MaxSignatureLength();
     std::string sig(siglen, 0x00);
-    siglen = signer.SignMessage(prng, (const byte*)&message[0], message.size(), (byte*)&sig[0]);
+    siglen = signer.SignMessage(prng, (const byte *) &message[0], message.size(), (byte *) &sig[0]);
     sig.resize(siglen);
 
     return sig;
 }
 
-int client_keyreq(NetworkClient client, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT, double &time) {
+int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT, double &time) {
 
     int ret = 0;
     sgx_status_t status = SGX_SUCCESS;
@@ -142,10 +142,11 @@ int client_keyreq(NetworkClient client, AibeAlgo aibeAlgo, sgx_enclave_id_t encl
     int msg_size;
     std::string msg_body;
     std::string sig, str_idsn;
-    std::vector<uint8_t> vec_pms, vec_sig;
+    std::vector<uint8_t> vec_pms, vec_sig, vec_pkey;
 
 //    test
     clock_t st, et;
+    json j_res;
 
     uint8_t p_data[LENOFMSE] = {0};
 
@@ -177,11 +178,11 @@ int client_keyreq(NetworkClient client, AibeAlgo aibeAlgo, sgx_enclave_id_t encl
     msg_body = json1.dump();
 
     // construct request
-    msg_size = strlen(msg_body.c_str());
+    msg_size = msg_body.size() + 1;
     p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);
     p_request->size = msg_size;
     p_request->type = TYPE_LM_KEYREQ;
-    strcpy((char *)p_request->body, msg_body.c_str());
+    strcpy((char *) p_request->body, msg_body.c_str());
 
     puts((char *) p_request->body);
 
@@ -195,6 +196,9 @@ int client_keyreq(NetworkClient client, AibeAlgo aibeAlgo, sgx_enclave_id_t encl
     p_response = (ra_samp_response_header_t *) malloc(
             sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
 
+    et = clock();
+    time = et - st;
+
     memcpy(p_response, client.recvbuf, recvlen);
     if ((p_response->type != TYPE_LM_KEYREQ)) {
         DBG(stderr, "Error: INTERNAL ERROR - recv type error in [%s]-[%d].",
@@ -203,16 +207,42 @@ int client_keyreq(NetworkClient client, AibeAlgo aibeAlgo, sgx_enclave_id_t encl
         ret = -1;
         goto CLEANUP;
     }
-    DBG(OUTPUT, "Certificate received");
+
+    j_res = json::parse(std::string((char *)p_response->body));
+    j_res.at("pkey").get_to(vec_pkey);
+
+    std::copy(vec_pkey.begin(), vec_pkey.end(), p_data);
+
+    // keygen 3
+
+    dk_from_bytes(&aibeAlgo.dk1, p_data, aibeAlgo.size_comp_G1);
+    {
+        DBG(stdout, "Data of dk' is\n");
+        ELE_DBG(stdout, "dk'.d1: %B\n", aibeAlgo.dk1.d1);
+        ELE_DBG(stdout, "dk'.d2: %B\n", aibeAlgo.dk1.d2);
+        ELE_DBG(stdout, "dk'.d3: %B\n", aibeAlgo.dk1.d3);
+    }
+
+    if (aibeAlgo.keygen3()) {
+        ret = -1;
+        goto CLEANUP;
+    }
+
+    {
+        DBG(stdout, "Data of dk is\n");
+        ELE_DBG(stdout, "dk.d1: %B\n", aibeAlgo.dk.d1);
+        ELE_DBG(stdout, "dk.d2: %B\n", aibeAlgo.dk.d2);
+        ELE_DBG(stdout, "dk.d3: %B\n", aibeAlgo.dk.d3);
+    }
+    aibeAlgo.dk_store();
 
     CLEANUP:
-    SAFE_FREE(p_request);
     SAFE_FREE(p_response);
     return ret;
 }
 
 
-int client_keygen(int id, AibeAlgo aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT, NetworkClient client,
+int client_keygen(int id, AibeAlgo &aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT, NetworkClient client,
                   double &time) {
     int ret = 0;
     sgx_status_t status = SGX_SUCCESS;
@@ -494,9 +524,7 @@ int main(int argc, char *argv[]) {
 
 
     switch (mod) {
-        case 0:
-
-        {
+        case 0: {
             std::cout << "Generated client (vk, sk)" << std::endl;
 
             std::string str_idsn = std::to_string(aibeAlgo.idsn());
@@ -517,7 +545,7 @@ int main(int argc, char *argv[]) {
             PEM_Save(fs_pub, pk);
 
         }
-        break;
+            break;
 
         case 1:
             // Encrypt
@@ -538,9 +566,9 @@ int main(int argc, char *argv[]) {
 
             ct = std::vector<uint8_t>(ct_buf, ct_buf + ct_size);
             j = json{
-                    {"id",      ID},
-                    {"sn",      SN},
-                    {"ct",      ct}
+                    {"id", ID},
+                    {"sn", SN},
+                    {"ct", ct}
             };
 
             std::ofstream(ct_path) << j;

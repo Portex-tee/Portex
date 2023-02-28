@@ -37,6 +37,9 @@
 #include <stdio.h>
 #include <limits.h>
 #include <unistd.h>
+#include <json.hpp>
+#include <vector>
+
 // Needed for definition of remote attestation messages.
 #include "remote_attestation_result.h"
 
@@ -68,6 +71,7 @@
     }
 #endif
 
+#define _T(x) x
 // In addition to generating and sending messages, this application
 // can use pre-generated messages to verify the generation of
 // messages and the information flow.
@@ -82,6 +86,7 @@
 #define DBG(...) if(debug_enable)(fprintf(__VA_ARGS__))
 #define ELE_DBG(...) if(debug_enable)(element_fprintf(__VA_ARGS__))
 
+using json = nlohmann::json;
 
 int rbits = 160;
 int qbits = (1 << 8); // lambda
@@ -329,6 +334,108 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
     return ret;
 }
 
+
+int pkg_keyreq(const uint8_t *p_msg,
+               uint32_t msg_size,
+               sgx_enclave_id_t id,
+               sgx_status_t *status,
+               AibeAlgo &aibeAlgo,
+               NetworkServer &server) {
+    std::vector<uint8_t> vec_prf, vec_pms;
+    if (!p_msg ||
+        (msg_size > BUFSIZ)) {
+        return -1;
+    }
+    int ret = 0;
+    uint8_t data[BUFSIZ];
+    Proofs proofs;
+    int msg2_size;
+    ra_samp_response_header_t *p_response = NULL;
+
+    int busy_retry_time = 4;
+    uint8_t p_data[LENOFMSE] = {0};
+    uint8_t out_data[LENOFMSE] = {0};
+    ra_samp_response_header_t *p_msg2_full = NULL;
+    uint32_t data_size = msg_size - SGX_AESGCM_MAC_SIZE;
+
+
+    // parse msg body to json
+    json j_msg;
+    {
+        std::string msg_body((char *) p_msg);
+        std::cout << msg_body << std::endl;
+        j_msg = json::parse(msg_body);
+        j_msg.at("prf").get_to(vec_prf);
+        j_msg.at("pms").get_to(vec_pms);
+    }
+
+    std::copy(vec_prf.begin(), vec_prf.end(), data);
+    DBG(stderr, "\nstart deserialise");
+    proofs.deserialise(data);
+    if (!proofs.verify_proofs()) {
+        DBG(stderr, "\nProofs verify failed.");
+    }
+    DBG(stderr, "\nProofs verify succeed.");
+
+    std::copy(vec_pms.begin(), vec_pms.end(), p_data);
+    element_from_bytes_compressed(aibeAlgo.R, p_data);
+    element_from_bytes_compressed(aibeAlgo.Hz, p_data + aibeAlgo.size_comp_G1);
+
+    {
+        DBG(stdout, "\nData of Hz and R is\n");
+        ELE_DBG(stdout, "Hz: %B\n", aibeAlgo.Hz);
+        ELE_DBG(stdout, "R: %B\n", aibeAlgo.R);
+    }
+
+    aibeAlgo.keygen2();
+
+    {
+        DBG(stdout, "\nData of dk' is\n");
+        ELE_DBG(stdout, "dk'.d1: %B\n", aibeAlgo.dk1.d1);
+        ELE_DBG(stdout, "dk'.d2: %B\n", aibeAlgo.dk1.d2);
+        ELE_DBG(stdout, "dk'.d3: %B\n", aibeAlgo.dk1.d3);
+    }
+
+    dk_to_bytes(p_data, &aibeAlgo.dk1, aibeAlgo.size_comp_G1);
+    data_size = aibeAlgo.size_comp_G1 * 2 + aibeAlgo.size_Zr;
+
+    std::vector<uint8_t> vec_pkey(p_data, p_data + data_size);
+
+    json j_res{
+            {"pkey", vec_pkey}
+    };
+    std::string msg_body = j_res.dump();
+
+    msg2_size = msg_body.size() + 1;
+    p_response = (ra_samp_response_header_t *) malloc(msg2_size + sizeof(ra_samp_response_header_t));
+    if (!p_response) {
+        DBG(stderr, "\nError, out of memory in [%s]-[%d].", __FUNCTION__, __LINE__);
+        ret = SP_INTERNAL_ERROR;
+        return ret;
+    }
+
+    // construct response
+    memset(p_response, 0, msg2_size + sizeof(ra_samp_response_header_t));
+    p_response->type = TYPE_RA_KEYREQ;
+    p_response->size = msg2_size;
+    p_response->status[0] = 0;
+    p_response->status[1] = 0;
+    strcpy((char *)p_response->body, msg_body.c_str());
+
+// send to LM
+    memset(server.sendbuf, 0, BUFSIZ);
+    memcpy(server.sendbuf, p_response, msg2_size + sizeof(ra_samp_response_header_t));
+
+    if (server.SendTo(msg2_size + sizeof(ra_samp_response_header_t)) < 0) {
+        DBG(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
+        ret = SP_INTERNAL_ERROR;
+        return ret;
+    }
+
+    DBG(stdout, "\nKeyreq Done.");
+    return ret;
+}
+
 int pkg_keygen(const ra_samp_request_header_t *p_msg,
                uint32_t msg_size,
                sgx_enclave_id_t id,
@@ -397,12 +504,6 @@ int pkg_keygen(const ra_samp_request_header_t *p_msg,
                 mac);
     } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
 
-//    DBG(stdout, "\nData of Encrypt is\n");
-//    PRINT_BYTE_ARRAY(stdout, p_data, data_size);
-//    DBG(stdout, "\nData of Encrypted and mac is\n");
-//    PRINT_BYTE_ARRAY(stdout, out_data, data_size);
-//    PRINT_BYTE_ARRAY(stdout, mac, SGX_AESGCM_MAC_SIZE);
-
     p_msg2_full = (ra_samp_response_header_t *) malloc(msg2_size + sizeof(ra_samp_response_header_t));
     if (!p_msg2_full) {
         DBG(stderr, "\nError, out of memory in [%s]-[%d].", __FUNCTION__, __LINE__);
@@ -447,70 +548,6 @@ int pkg_keygen(const ra_samp_request_header_t *p_msg,
 }
 
 
-int pkg_keyreq(const ra_samp_request_header_t *p_msg,
-               uint32_t msg_size,
-               sgx_enclave_id_t id,
-               sgx_status_t *status,
-               NetworkServer &server) {
-    if (!p_msg ||
-        (msg_size > BUFSIZ)) {
-        return -1;
-    }
-    int ret = 0;
-    uint8_t data[BUFSIZ];
-    Proofs proofs;
-    int msg2_size;
-    ra_samp_response_header_t *p_response = NULL;
-
-    memcpy_s(data, msg_size, p_msg, msg_size);
-    DBG(stderr, "\nstart deserialise");
-    proofs.deserialise(data);
-    if (!proofs.verify_proofs()) {
-        DBG(stderr, "\nProofs verify failed.");
-    }
-
-    DBG(stderr, "\nProofs verify succeed.");
-
-    msg2_size = 0;
-    p_response = (ra_samp_response_header_t *) malloc(msg2_size + sizeof(ra_samp_response_header_t));
-    if (!p_response) {
-        DBG(stderr, "\nError, out of memory in [%s]-[%d].", __FUNCTION__, __LINE__);
-        ret = SP_INTERNAL_ERROR;
-        return ret;
-    }
-    memset(p_response, 0, msg2_size + sizeof(ra_samp_response_header_t));
-    p_response->type = TYPE_RA_KEYREQ;
-    p_response->size = msg2_size;
-    p_response->status[0] = 0;
-    p_response->status[1] = 0;
-
-
-    memset(server.sendbuf, 0, BUFSIZ);
-    if (memcpy_s(server.sendbuf,
-                 msg2_size + sizeof(ra_samp_response_header_t),
-                 p_response,
-                 msg2_size + sizeof(ra_samp_response_header_t))) {
-        DBG(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
-        ret = SP_INTERNAL_ERROR;
-        return ret;
-    }
-
-    if (server.SendTo(msg2_size + sizeof(ra_samp_response_header_t)) < 0) {
-        DBG(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
-        ret = SP_INTERNAL_ERROR;
-        return ret;
-    }
-
-    DBG(stdout, "\nKeyreq Done.");
-    return ret;
-}
-
-// This sample code doesn't have any recovery/retry mechanisms for the remote
-// attestation. Since the enclave can be lost due S3 transitions, apps
-// susceptible to S3 transitions should have logic to restart attestation in
-// these scenarios.
-#define _T(x) x
-
 int main(int argc, char *argv[]) {
     int ret = 0;
     NetworkServer server;
@@ -554,6 +591,28 @@ int main(int argc, char *argv[]) {
 
         fclose(file_pkg);
         fclose(file_client);
+    }
+
+    // todo: signature
+    {
+//        std::cout << "Generated client (vk, sk)" << std::endl;
+//
+//        std::string str_idsn = std::to_string(aibeAlgo.idsn());
+//        AutoSeededRandomPool prng;
+//        ECDSA<ECP, SHA256>::PrivateKey sk;
+//        sk.Initialize(prng, ASN1::secp256r1());
+//        ECDSA<ECP, SHA256>::Signer signer(sk);
+//
+//
+//        ECDSA<ECP, SHA256>::PublicKey pk;
+//        sk.MakePublicKey(pk);
+//
+//
+//        FileSink fs_pri("param/ec-pri.pem", true);
+//        PEM_Save(fs_pri, sk);
+//
+//        FileSink fs_pub("param/ec-pub.pem", true);
+//        PEM_Save(fs_pub, pk);
     }
 
     aibeAlgo.load_param(param_path);
@@ -755,11 +814,12 @@ int main(int argc, char *argv[]) {
                         break;
                     case TYPE_RA_KEYREQ:
                         DBG(OUTPUT, "\nProcess Keyreq");
-                        ret = pkg_keyreq((const ra_samp_request_header_t *) ((uint8_t *) p_req +
+                        ret = pkg_keyreq((const uint8_t *) ((uint8_t *) p_req +
                                                                              sizeof(ra_samp_request_header_t)),
                                          p_req->size,
                                          enclave_id,
                                          &status,
+                                         aibeAlgo,
                                          server);
                         DBG(OUTPUT, "\nKeyreq Done %d %d", enclave_id, status);
                         if (0 != ret) {

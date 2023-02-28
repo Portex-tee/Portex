@@ -461,8 +461,8 @@ sgx_status_t enclave_update(
 //    if (ret != SGX_SUCCESS)
 //        return ret; // could not verify proof
 //
-//    // sign for N, then generate one-off cert
-//    ret = enclave_get_oc(N, sk_sign, oc, &oc_size);
+//    // sign for N_IDSN, then generate one-off cert
+//    ret = enclave_get_oc(N_IDSN, sk_sign, oc, &oc_size);
 //    if (ret != SGX_SUCCESS)
 //        return ret;
 //
