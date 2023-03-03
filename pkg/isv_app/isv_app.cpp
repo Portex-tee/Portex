@@ -127,7 +127,7 @@ void PRINT_ATTESTATION_SERVICE_RESPONSE(
 
     DBG(file, "RESPONSE TYPE:   0x%x\n", response->type);
     DBG(file, "RESPONSE STATUS: 0x%x 0x%x\n", response->status[0],
-            response->status[1]);
+        response->status[1]);
     DBG(file, "RESPONSE BODY SIZE: %u\n", response->size);
 
     if (response->type == TYPE_RA_MSG2) {
@@ -164,15 +164,15 @@ void PRINT_ATTESTATION_SERVICE_RESPONSE(
         PRINT_BYTE_ARRAY(file, &(p_att_result->mac), sizeof(p_att_result->mac));
 
         DBG(file, "ATTESTATION RESULT MSG secret.payload_tag - %u bytes\n",
-                p_att_result->secret.payload_size);
+            p_att_result->secret.payload_size);
 
         DBG(file, "ATTESTATION RESULT MSG secret.payload - ");
         PRINT_BYTE_ARRAY(file, p_att_result->secret.payload,
                          p_att_result->secret.payload_size);
     } else {
         DBG(file, "\nERROR in printing out the response. "
-                      "Response of type not supported %d\n",
-                response->type);
+                  "Response of type not supported %d\n",
+            response->type);
     }
 }
 
@@ -228,8 +228,8 @@ int myaesencrypt(const ra_samp_request_header_t *p_msgenc,
     memcpy(p_msg2_full->body + data_size, mac, SGX_AESGCM_MAC_SIZE);
     memset(server.sendbuf, 0, BUFSIZ);
     memcpy(server.sendbuf,
-                 p_msg2_full,
-                 msg2_size + sizeof(ra_samp_response_header_t));
+           p_msg2_full,
+           msg2_size + sizeof(ra_samp_response_header_t));
 
     if (server.SendTo(msg2_size + sizeof(ra_samp_response_header_t)) < 0) {
         DBG(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
@@ -300,8 +300,8 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
     memcpy(&p_msg2_full->body[0], &out_data[0], msg2_size);
     memset(server.sendbuf, 0, BUFSIZ);
     memcpy(server.sendbuf,
-                 p_msg2_full,
-                 msg2_size + sizeof(ra_samp_response_header_t));
+           p_msg2_full,
+           msg2_size + sizeof(ra_samp_response_header_t));
 
     if (server.SendTo(msg2_size + sizeof(ra_samp_response_header_t)) < 0) {
         DBG(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
@@ -315,7 +315,7 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
 
 int pkg_keyreq(const uint8_t *p_msg,
                uint32_t msg_size,
-               sgx_enclave_id_t id,
+               sgx_enclave_id_t eid,
                sgx_status_t *status,
                AibeAlgo &aibeAlgo,
                NetworkServer &server) {
@@ -328,6 +328,7 @@ int pkg_keyreq(const uint8_t *p_msg,
     uint8_t data[BUFSIZ];
     Proofs proofs;
     int msg2_size;
+    int id, sn;
     ra_samp_response_header_t *p_response = NULL;
 
     int busy_retry_time = 4;
@@ -340,7 +341,7 @@ int pkg_keyreq(const uint8_t *p_msg,
 
 
     // parse msg body to json
-    json j_body, j_ir;
+    json j_body, j_ir, j_node;
     {
         std::string msg_body((char *) p_msg);
         std::cout << msg_body << std::endl;
@@ -352,8 +353,12 @@ int pkg_keyreq(const uint8_t *p_msg,
     ir = json::to_bjdata(j_ir);
     res = ecdsa_verify(ir, ir_sig, "param/lm-verify.pem");
 
+    j_ir.at("node").get_to(j_node);
     j_ir.at("prf").get_to(vec_prf);
     j_ir.at("pms").get_to(vec_pms);
+
+    j_node.at("id").get_to(aibeAlgo.id);
+    j_node.at("sn").get_to(aibeAlgo.sn);
 
     std::copy(vec_prf.begin(), vec_prf.end(), data);
     DBG(stderr, "\nstart deserialise");
@@ -365,7 +370,7 @@ int pkg_keyreq(const uint8_t *p_msg,
 
     std::copy(vec_pms.begin(), vec_pms.end(), p_data);
     element_from_bytes_compressed(aibeAlgo.R, p_data);
-    element_from_bytes_compressed(aibeAlgo.Hz, p_data + aibeAlgo.size_comp_G1);
+    aibeAlgo.set_Hz(aibeAlgo.idsn());
 
     {
         DBG(stdout, "\nData of Hz and R is\n");
@@ -391,7 +396,7 @@ int pkg_keyreq(const uint8_t *p_msg,
 
     json j_res{
             {"pkey_ct", vec_ct},
-            {"sig",  vec_pkey_sig}
+            {"sig",     vec_pkey_sig}
     };
     std::string msg_body = j_res.dump();
 
@@ -409,7 +414,7 @@ int pkg_keyreq(const uint8_t *p_msg,
     p_response->size = msg2_size;
     p_response->status[0] = 0;
     p_response->status[1] = 0;
-    strcpy((char *)p_response->body, msg_body.c_str());
+    strcpy((char *) p_response->body, msg_body.c_str());
 
     if (!res) {
         p_response->size = 0;
@@ -427,104 +432,6 @@ int pkg_keyreq(const uint8_t *p_msg,
     }
 
     DBG(stdout, "\nKeyreq Done.");
-    return ret;
-}
-
-int pkg_keygen(const ra_samp_request_header_t *p_msg,
-               uint32_t msg_size,
-               sgx_enclave_id_t id,
-               sgx_status_t *status,
-               AibeAlgo aibeAlgo,
-               NetworkServer &server) {
-    if (!p_msg ||
-        (msg_size > LENOFMSE)) {
-        return -1;
-    }
-    sgx_aes_gcm_128bit_tag_t mac;
-    int ret = 0;
-    int busy_retry_time = 4;
-    int msg2_size = aibeAlgo.size_comp_G1 * 2 + aibeAlgo.size_Zr + SGX_AESGCM_MAC_SIZE;
-    uint8_t p_data[LENOFMSE] = {0};
-    uint8_t out_data[LENOFMSE] = {0};
-    ra_samp_response_header_t *p_msg2_full = NULL;
-    uint32_t data_size = msg_size - SGX_AESGCM_MAC_SIZE;
-
-    memcpy(p_data, p_msg, msg_size);
-    memcpy(mac, p_data + data_size, SGX_AESGCM_MAC_SIZE);
-    do {
-        ret = enclave_decrypt(
-                id,
-                status,
-                p_data,
-                data_size,
-                out_data,
-                mac);
-    } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
-    if (ret != SGX_SUCCESS)
-        return ret;
-//    std::cout << "data_size and msg_size are " << data_size << " and " << (int)msg_size << std::endl;
-//    DBG(stdout, "\nData of Encrypted R and its MAC is\n");
-//    PRINT_BYTE_ARRAY(stdout, p_data, data_size);
-//    PRINT_BYTE_ARRAY(stdout, mac, SGX_AESGCM_MAC_SIZE);
-
-    element_from_bytes_compressed(aibeAlgo.R, out_data);
-    element_from_bytes_compressed(aibeAlgo.Hz, out_data + aibeAlgo.size_comp_G1);
-
-    {
-        DBG(stdout, "\nData of Hz and R is\n");
-        ELE_DBG(stdout, "Hz: %B\n", aibeAlgo.Hz);
-        ELE_DBG(stdout, "R: %B\n", aibeAlgo.R);
-    }
-
-    aibeAlgo.keygen2();
-
-    {
-        DBG(stdout, "\nData of dk' is\n");
-        ELE_DBG(stdout, "dk'.d1: %B\n", aibeAlgo.dk1.d1);
-        ELE_DBG(stdout, "dk'.d2: %B\n", aibeAlgo.dk1.d2);
-        ELE_DBG(stdout, "dk'.d3: %B\n", aibeAlgo.dk1.d3);
-    }
-
-    busy_retry_time = 4;
-    dk_to_bytes(p_data, &aibeAlgo.dk1, aibeAlgo.size_comp_G1);
-    data_size = msg2_size - SGX_AESGCM_MAC_SIZE;
-    do {
-        ret = enclave_encrypt(
-                id,
-                status,
-                p_data,
-                data_size,
-                out_data,
-                mac);
-    } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
-
-    p_msg2_full = (ra_samp_response_header_t *) malloc(msg2_size + sizeof(ra_samp_response_header_t));
-    if (!p_msg2_full) {
-        DBG(stderr, "\nError, out of memory in [%s]-[%d].", __FUNCTION__, __LINE__);
-        ret = SP_INTERNAL_ERROR;
-        return ret;
-    }
-    memset(p_msg2_full, 0, msg2_size + sizeof(ra_samp_response_header_t));
-    p_msg2_full->type = TYPE_RA_KEYGEN;
-    p_msg2_full->size = msg2_size;
-    p_msg2_full->status[0] = 0;
-    p_msg2_full->status[1] = 0;
-
-    memcpy(p_msg2_full->body, out_data, data_size);
-    memcpy(p_msg2_full->body + data_size, mac, SGX_AESGCM_MAC_SIZE);
-    memset(server.sendbuf, 0, BUFSIZ);
-    memcpy(server.sendbuf,
-                 p_msg2_full,
-                 msg2_size + sizeof(ra_samp_response_header_t));
-
-    if (server.SendTo(msg2_size + sizeof(ra_samp_response_header_t)) < 0) {
-        DBG(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
-        ret = SP_INTERNAL_ERROR;
-        return ret;
-    }
-
-    SAFE_FREE(p_msg2_full);
-    DBG(stdout, "\nKeygen2 Done.");
     return ret;
 }
 
@@ -575,8 +482,7 @@ int main(int argc, char *argv[]) {
     }
 
 
-    if (0)
-    {
+    if (0) {
         std::cout << "Generated pkg (vk, sk)" << std::endl;
         ecdsa_kgen("../client/param/pkg-verify.pem", "param/pkg-sign.pem");
     }
@@ -608,7 +514,7 @@ int main(int argc, char *argv[]) {
         if (SGX_SUCCESS != ret) {
             ret = -1;
             DBG(OUTPUT, "\nError, call sgx_get_extended_epid_group_id fail [%s].",
-                    __FUNCTION__);
+                __FUNCTION__);
             return ret;
         }
         DBG(OUTPUT, "\nCall sgx_get_extended_epid_group_id success.");
@@ -625,7 +531,7 @@ int main(int argc, char *argv[]) {
             if (SGX_SUCCESS != ret) {
                 ret = -1;
                 DBG(OUTPUT, "\nError, call sgx_create_enclave fail [%s].",
-                        __FUNCTION__);
+                    __FUNCTION__);
                 goto CLEANUP;
             }
             DBG(OUTPUT, "\nCall sgx_create_enclave success.");
@@ -640,7 +546,7 @@ int main(int argc, char *argv[]) {
         if (SGX_SUCCESS != ret || status) {
             ret = -1;
             DBG(OUTPUT, "\nError, call enclave_init_ra fail [%s].",
-                    __FUNCTION__);
+                __FUNCTION__);
             goto CLEANUP;
         }
         DBG(OUTPUT, "\nCall enclave_init_ra success.");
@@ -673,7 +579,7 @@ int main(int argc, char *argv[]) {
                         is_recv = false;
                         break;
                         //收取msg1，进行验证并返回msg2
-                    //收取msg0，进行验证
+                        //收取msg0，进行验证
                     case TYPE_RA_MSG0:
                         DBG(OUTPUT, "\nProcess Message 0");
                         ret = sp_ra_proc_msg0_req(
@@ -682,14 +588,15 @@ int main(int argc, char *argv[]) {
                         DBG(OUTPUT, "\nProcess Message 0 Done");
                         if (0 != ret) {
                             DBG(OUTPUT, "\nError, call sp_ra_proc_msg1_req fail [%s].",
-                                    __FUNCTION__);
+                                __FUNCTION__);
                         }
                         SAFE_FREE(p_req);
                         break;
                         //收取msg1，进行验证并返回msg2
                     case TYPE_RA_MSG1:
                         DBG(OUTPUT, "\nBuffer length is %d\n", buflen);
-                        p_resp_msg = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t) + 170);//简化处理
+                        p_resp_msg = (ra_samp_response_header_t *) malloc(
+                                sizeof(ra_samp_response_header_t) + 170);//简化处理
                         memset(p_resp_msg, 0, sizeof(ra_samp_response_header_t) + 170);
                         DBG(OUTPUT, "\nProcess Message 1\n");
                         ret = sp_ra_proc_msg1_req(
@@ -699,11 +606,11 @@ int main(int argc, char *argv[]) {
                         DBG(OUTPUT, "\nProcess Message 1 Done");
                         if (0 != ret) {
                             DBG(stderr, "\nError, call sp_ra_proc_msg1_req fail [%s].",
-                                    __FUNCTION__);
+                                __FUNCTION__);
                         } else {
                             memset(server.sendbuf, 0, BUFSIZ);
                             memcpy(server.sendbuf, p_resp_msg,
-                                         sizeof(ra_samp_response_header_t) + p_resp_msg->size);
+                                   sizeof(ra_samp_response_header_t) + p_resp_msg->size);
                             DBG(OUTPUT, "\nSend Message 2\n");
                             PRINT_BYTE_ARRAY(OUTPUT, p_resp_msg, 176);
                             int buflen = server.SendTo(sizeof(ra_samp_response_header_t) + p_resp_msg->size);
@@ -715,19 +622,20 @@ int main(int argc, char *argv[]) {
                         //收取msg3，返回attestation result
                     case TYPE_RA_MSG3:
                         DBG(OUTPUT, "\nProcess Message 3");
-                        p_resp_msg = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t) + 200);//简化处理
+                        p_resp_msg = (ra_samp_response_header_t *) malloc(
+                                sizeof(ra_samp_response_header_t) + 200);//简化处理
                         memset(p_resp_msg, 0, sizeof(ra_samp_response_header_t) + 200);
-                        ret = sp_ra_proc_msg3_req((const sample_ra_msg3_t *) ((uint8_t *) p_req +
-                                                                              sizeof(ra_samp_request_header_t)),
-                                                  p_req->size,
-                                                  &p_resp_msg);
+                        ret = sp_ra_proc_msg3_req(
+                                (const sample_ra_msg3_t *) ((uint8_t *) p_req + sizeof(ra_samp_request_header_t)),
+                                p_req->size,
+                                &p_resp_msg);
                         if (0 != ret) {
                             DBG(stderr, "\nError, call sp_ra_proc_msg3_req fail [%s].",
-                                    __FUNCTION__);
+                                __FUNCTION__);
                         } else {
                             memset(server.sendbuf, 0, BUFSIZ);
                             memcpy(server.sendbuf, p_resp_msg,
-                                         sizeof(ra_samp_response_header_t) + p_resp_msg->size);
+                                   sizeof(ra_samp_response_header_t) + p_resp_msg->size);
                             DBG(OUTPUT, "\nSend attestation data\n");
                             PRINT_BYTE_ARRAY(OUTPUT, p_resp_msg, sizeof(ra_samp_response_header_t) + p_resp_msg->size);
                             int buflen = server.SendTo(sizeof(ra_samp_response_header_t) + p_resp_msg->size);
@@ -746,27 +654,10 @@ int main(int argc, char *argv[]) {
                         SAFE_FREE(p_req);
                         SAFE_FREE(p_resp_msg);
                         break;
-                    case TYPE_RA_KEYGEN:
-                        DBG(OUTPUT, "\nProcess Keygen");
-                        ret = pkg_keygen((const ra_samp_request_header_t *) ((uint8_t *) p_req +
-                                                                             sizeof(ra_samp_request_header_t)),
-                                         p_req->size,
-                                         enclave_id,
-                                         &status,
-                                         aibeAlgo,
-                                         server);
-                        DBG(OUTPUT, "\nKeygen2 Done %d %d", enclave_id, status);
-                        if (0 != ret) {
-                            DBG(stderr, "\nError, call keygen fail [%s].",
-                                    __FUNCTION__);
-                        }
-                        SAFE_FREE(p_req);
-                        is_recv = false;
-                        break;
                     case TYPE_RA_KEYREQ:
                         DBG(OUTPUT, "\nProcess Keyreq");
                         ret = pkg_keyreq((const uint8_t *) ((uint8_t *) p_req +
-                                                                             sizeof(ra_samp_request_header_t)),
+                                                            sizeof(ra_samp_request_header_t)),
                                          p_req->size,
                                          enclave_id,
                                          &status,
@@ -775,7 +666,7 @@ int main(int argc, char *argv[]) {
                         DBG(OUTPUT, "\nKeyreq Done %d %d", enclave_id, status);
                         if (0 != ret) {
                             DBG(stderr, "\nError, call keyreq fail [%s].",
-                                    __FUNCTION__);
+                                __FUNCTION__);
                         }
                         SAFE_FREE(p_req);
                         is_recv = false;
@@ -784,7 +675,7 @@ int main(int argc, char *argv[]) {
                     default:
                         ret = -1;
                         DBG(stderr, "\nError, unknown ra message type. Type = %d [%s].",
-                                p_req->type, __FUNCTION__);
+                            p_req->type, __FUNCTION__);
                         goto CLEANUP;
                 }
             }
@@ -810,7 +701,7 @@ int main(int argc, char *argv[]) {
         if (SGX_SUCCESS != ret || status) {
             ret = -1;
             DBG(OUTPUT, "\nError, call enclave_ra_close fail [%s].",
-                    __FUNCTION__);
+                __FUNCTION__);
         } else {
             // enclave_ra_close was successful, let's restore the value that
             // led us to this point in the code.

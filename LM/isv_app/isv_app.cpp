@@ -152,6 +152,7 @@ int lm_keyreq(const uint8_t *p_msg,
     vec_prf = std::vector<uint8_t>(data, data + msg2_size);
 
     json j_req{
+            {"node", j_node},
             {"prf", vec_prf},
             {"pms", vec_pms}
     };

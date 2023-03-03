@@ -405,13 +405,13 @@ void AibeAlgo::msk_load() {
     fclose(fsk);
 }
 
-void AibeAlgo::set_Hz(int id) {
+void AibeAlgo::set_Hz(int tid) {
 
     element_set(Hz, mpk.Z[0]);
     {
         mpz_t digit;
         for (int i = 1; i <= z_size; ++i) {
-            mpz_init_set_si(digit, get_bit(id, i));
+            mpz_init_set_si(digit, get_bit(tid, i));
             if (!mpz_is0(digit))
                 element_mul(Hz, Hz, mpk.Z[i]);
             mpz_clear(digit);
