@@ -40,12 +40,7 @@
 #include <limits.h>
 #include <unistd.h>
 #include <json.hpp>
-#include <cryptopp/eccrypto.h>
-#include <cryptopp/osrng.h>
-#include <cryptopp/hex.h>
-#include <cryptopp/oids.h>
-#include <cryptopp/pem.h>
-#include "cryptopp/files.h"
+#include "ec_crypto.h"
 
 // Needed for definition of remote attestation messages.
 #include "remote_attestation_result.h"
@@ -100,7 +95,6 @@
 #define _T(x) x
 
 using json = nlohmann::json;
-using namespace CryptoPP;
 
 FILE *OUTPUT = stdout;
 
@@ -115,21 +109,6 @@ void getLocalTime(char *timeStr, int len, struct timeval tv) {
     sprintf(timeStr, "%s.%03ld", timeStr, milliseconds);
 }
 
-std::string get_sig(std::string message) {
-    AutoSeededRandomPool prng;
-    ECDSA<ECP, SHA256>::PrivateKey sk;
-    FileSource fs_pri("param/ec-pri.pem", true);
-    PEM_Load(fs_pri, sk);
-    ECDSA<ECP, SHA256>::Signer signer(sk);
-
-    size_t siglen = signer.MaxSignatureLength();
-    std::string sig(siglen, 0x00);
-    siglen = signer.SignMessage(prng, (const byte *) &message[0], message.size(), (byte *) &sig[0]);
-    sig.resize(siglen);
-
-    return sig;
-}
-
 int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT, double &time) {
 
     int ret = 0;
@@ -142,7 +121,7 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enc
     int msg_size;
     std::string msg_body;
     std::string sig, str_idsn;
-    std::vector<uint8_t> vec_pms, vec_sig, vec_pkey;
+    std::vector<uint8_t> vec_pms, vec_idsn, vec_sig, vec_pkey, vec_pkey_sig, vec_ct;
 
 //    test
     clock_t st, et;
@@ -152,8 +131,9 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enc
 
     // get idsn signature
     str_idsn = std::to_string(aibeAlgo.idsn());
-    sig = get_sig(str_idsn);
-    vec_sig = std::vector<uint8_t>(sig.c_str(), sig.c_str() + sig.size());
+    vec_idsn = std::vector<uint8_t>(str_idsn.begin(), str_idsn.end());
+
+    ecdsa_sign(vec_idsn, vec_sig, "param/ec-pri.pem");
 
     // get R and put into jason
     aibeAlgo.keygen1(aibeAlgo.idsn());
@@ -208,14 +188,32 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enc
         goto CLEANUP;
     }
 
-    j_res = json::parse(std::string((char *)p_response->body));
-    j_res.at("pkey").get_to(vec_pkey);
+    if (p_response->status[1]) {
+        DBG(stderr, "Error: LM ERROR - recv empty response in [%s]-[%d].",
+            __FUNCTION__, __LINE__);
+        printf("%d\n", p_response->size);
+        ret = -1;
+        goto CLEANUP;
+    }
 
-    std::copy(vec_pkey.begin(), vec_pkey.end(), p_data);
+    j_res = json::parse(std::string((char *)p_response->body));
+    j_res.at("pkey_ct").get_to(vec_ct);
+    j_res.at("sig").get_to(vec_pkey_sig);
+
+
+    ret = ecdsa_verify(vec_ct, vec_pkey_sig, "./param/pkg-verify.pem");
+    if (ret) {
+        std::cout << "pkey signature is valid" << std::endl;
+    } else {
+        std::cout << "ERR: pkey signature verify failed!" << std::endl;
+        goto CLEANUP;
+    }
+
+    ecc_decrypt(vec_pkey, vec_ct, "param/client-sk.pem");
 
     // keygen 3
 
-    dk_from_bytes(&aibeAlgo.dk1, p_data, aibeAlgo.size_comp_G1);
+    dk_from_bytes(&aibeAlgo.dk1, vec_pkey.data(), aibeAlgo.size_comp_G1);
     {
         DBG(stdout, "Data of dk' is\n");
         ELE_DBG(stdout, "dk'.d1: %B\n", aibeAlgo.dk1.d1);
@@ -527,23 +525,11 @@ int main(int argc, char *argv[]) {
         case 0: {
             std::cout << "Generated client (vk, sk)" << std::endl;
 
-            std::string str_idsn = std::to_string(aibeAlgo.idsn());
-            AutoSeededRandomPool prng;
-            ECDSA<ECP, SHA256>::PrivateKey sk;
-            sk.Initialize(prng, ASN1::secp256r1());
-            ECDSA<ECP, SHA256>::Signer signer(sk);
+            // generate ecdsa signing key pair
+            ecdsa_kgen("param/client-verify.pem", "param/client-sign.pem");
 
-
-            ECDSA<ECP, SHA256>::PublicKey pk;
-            sk.MakePublicKey(pk);
-
-
-            FileSink fs_pri("param/ec-pri.pem", true);
-            PEM_Save(fs_pri, sk);
-
-            FileSink fs_pub("param/ec-pub.pem", true);
-            PEM_Save(fs_pub, pk);
-
+            // generate ecc public key pair
+            ecc_kgen("../pkg/param/client-pk.pem", "param/client-sk.pem");
         }
             break;
 

@@ -38,6 +38,8 @@
 #include <limits.h>
 #include <unistd.h>
 #include <json.hpp>
+#include "ec_crypto.h"
+
 // Needed for definition of remote attestation messages.
 #include "remote_attestation_result.h"
 
@@ -109,7 +111,7 @@ int lm_keyreq(const uint8_t *p_msg,
     ra_samp_request_header_t *p_request = NULL;
     ra_samp_response_header_t *p_response = NULL;
     int data_size, msg2_size, recvlen;
-    std::vector<uint8_t> vec_sig, vec_prf, vec_pms;
+    std::vector<uint8_t> vec_sig, vec_prf, vec_pms, ir, ir_sig;
 
     timeval tv = {};
     gettimeofday(&tv, NULL);
@@ -153,8 +155,17 @@ int lm_keyreq(const uint8_t *p_msg,
             {"prf", vec_prf},
             {"pms", vec_pms}
     };
+
+    ir = json::to_bjdata(j_req);
+    ecdsa_sign(ir, ir_sig, "param/lm-sign.pem");
+
+    json j_body {
+            {"ir", j_req},
+            {"ir_sig", ir_sig}
+    };
+
     std::string str_body;
-    str_body = j_req.dump();
+    str_body = j_body.dump();
     std::cout << str_body << std::endl;
     msg2_size = str_body.size() + 1;
 
@@ -166,7 +177,7 @@ int lm_keyreq(const uint8_t *p_msg,
     strcpy((char *)p_request->body, str_body.c_str());
 
     memset(client.sendbuf, 0, BUFSIZ);
-    memcpy_s(client.sendbuf, BUFSIZ, p_request, sizeof(ra_samp_request_header_t) + msg2_size);
+    memcpy(client.sendbuf, p_request, sizeof(ra_samp_request_header_t) + msg2_size);
     client.SendTo(sizeof(ra_samp_request_header_t) + p_request->size);
 
     // recv
@@ -174,12 +185,7 @@ int lm_keyreq(const uint8_t *p_msg,
     p_response = (ra_samp_response_header_t *) malloc(
             sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
 
-    if (memcpy_s(p_response, recvlen, client.recvbuf, recvlen)) {
-        fprintf(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s]-[%d].",
-                __FUNCTION__, __LINE__);
-        ret = -1;
-        goto CLEANUP;
-    }
+    memcpy(p_response, client.recvbuf, recvlen);
     if ((p_response->type != TYPE_RA_KEYREQ)) {
         fprintf(OUTPUT, "Error: INTERNAL ERROR - response type unmatched in [%s]-[%d].",
                 __FUNCTION__, __LINE__);
@@ -190,7 +196,7 @@ int lm_keyreq(const uint8_t *p_msg,
 
     p_response->type = TYPE_LM_KEYREQ;
     memset(server.sendbuf, 0, BUFSIZ);
-    memcpy_s(server.sendbuf, BUFSIZ, p_response, sizeof(ra_samp_response_header_t) + p_response->size);
+    memcpy(server.sendbuf, p_response, sizeof(ra_samp_response_header_t) + p_response->size);
     server.SendTo(sizeof(ra_samp_response_header_t) + p_response->size);
 
 
@@ -244,7 +250,7 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
     p_response->size = msg2_size;
     strcpy((char *)p_response->body, str_data.c_str());
     memset(server.sendbuf, 0, BUFSIZ);
-    memcpy_s(server.sendbuf, BUFSIZ, p_response, sizeof(ra_samp_response_header_t) + p_response->size);
+    memcpy(server.sendbuf, p_response, sizeof(ra_samp_response_header_t) + p_response->size);
     server.SendTo(sizeof(ra_samp_response_header_t) + p_response->size);
 
     SAFE_FREE(p_response);
@@ -267,11 +273,12 @@ int main(int argc, char *argv[]) {
 
     Proofs proofs;
     std::string encodedHexStr;
-    timeval tv = {};
     std::string srcStr;
-    int id = ID;
 
-    gettimeofday(&tv, NULL);
+    if( 1 ) {
+        std::cout << "Generate LM signing key pair (vk, sk)" << std::endl;
+        ecdsa_kgen("../pkg/param/lm-verify.pem", "param/lm-sign.pem");
+    }
 
     int launch_token_update = 0;
     sgx_launch_token_t launch_token = {0};
@@ -294,7 +301,6 @@ int main(int argc, char *argv[]) {
     fprintf(OUTPUT, "start socket....\n");
     server.server(lm_port);
 
-
     do {
         bool is_recv = true;
         do {
@@ -308,12 +314,7 @@ int main(int argc, char *argv[]) {
                     ret = -1;
                     goto CLEANUP;
                 }
-                if (memcpy_s(p_req, buflen + 2, server.recvbuf, buflen)) {
-                    fprintf(OUTPUT, "Error: INTERNAL ERROR - memcpy failed in [%s].\n",
-                            __FUNCTION__);
-                    ret = -1;
-                    goto CLEANUP;
-                }
+                memcpy(p_req, server.recvbuf, buflen);
                 fprintf(OUTPUT, "request type is %d\n", p_req->type);
                 switch (p_req->type) {
                     case TYPE_LM_KEYREQ:

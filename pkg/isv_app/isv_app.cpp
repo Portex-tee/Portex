@@ -33,12 +33,13 @@
 // and an ISV Application Server.
 
 #include "log.h"
-#include "../service_provider/aibe.h"
+#include "aibe.h"
 #include <stdio.h>
 #include <limits.h>
 #include <unistd.h>
 #include <json.hpp>
 #include <vector>
+#include "ec_crypto.h"
 
 // Needed for definition of remote attestation messages.
 #include "remote_attestation_result.h"
@@ -195,7 +196,7 @@ int myaesencrypt(const ra_samp_request_header_t *p_msgenc,
 
     sgx_aes_gcm_128bit_tag_t mac;
 
-    memcpy_s(p_data, data_size, p_msgenc, data_size);
+    memcpy(p_data, p_msgenc, data_size);
     do {
         ret = enclave_encrypt(
                 id,
@@ -223,25 +224,12 @@ int myaesencrypt(const ra_samp_request_header_t *p_msgenc,
     p_msg2_full->status[0] = 0;
     p_msg2_full->status[1] = 0;
 
-    if (memcpy_s(p_msg2_full->body, data_size, out_data, data_size)) {
-        DBG(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
-        ret = SP_INTERNAL_ERROR;
-        return ret;
-    }
-    if (memcpy_s(p_msg2_full->body + data_size, SGX_AESGCM_MAC_SIZE, mac, SGX_AESGCM_MAC_SIZE)) {
-        DBG(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
-        ret = SP_INTERNAL_ERROR;
-        return ret;
-    }
+    memcpy(p_msg2_full->body, out_data, data_size);
+    memcpy(p_msg2_full->body + data_size, mac, SGX_AESGCM_MAC_SIZE);
     memset(server.sendbuf, 0, BUFSIZ);
-    if (memcpy_s(server.sendbuf,
-                 msg2_size + sizeof(ra_samp_response_header_t),
+    memcpy(server.sendbuf,
                  p_msg2_full,
-                 msg2_size + sizeof(ra_samp_response_header_t))) {
-        DBG(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
-        ret = SP_INTERNAL_ERROR;
-        return ret;
-    }
+                 msg2_size + sizeof(ra_samp_response_header_t));
 
     if (server.SendTo(msg2_size + sizeof(ra_samp_response_header_t)) < 0) {
         DBG(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
@@ -276,8 +264,8 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
     DBG(stdout, "====%d %d\n", data_size, msg_size);
     PRINT_BYTE_ARRAY(stdout, (uint8_t *) p_msgenc, msg_size);
 
-    memcpy_s(p_data, msg_size, p_msgenc, msg_size);
-    memcpy_s(mac, SGX_AESGCM_MAC_SIZE, p_data + data_size, SGX_AESGCM_MAC_SIZE);
+    memcpy(p_data, p_msgenc, msg_size);
+    memcpy(mac, p_data + data_size, SGX_AESGCM_MAC_SIZE);
     do {
         ret = enclave_decrypt(
                 id,
@@ -309,20 +297,11 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
     p_msg2_full->status[0] = 0;
     p_msg2_full->status[1] = 0;
 
-    if (memcpy_s(&p_msg2_full->body[0], msg2_size, &out_data[0], msg2_size)) {
-        DBG(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
-        ret = SP_INTERNAL_ERROR;
-        return ret;
-    }
+    memcpy(&p_msg2_full->body[0], &out_data[0], msg2_size);
     memset(server.sendbuf, 0, BUFSIZ);
-    if (memcpy_s(server.sendbuf,
-                 msg2_size + sizeof(ra_samp_response_header_t),
+    memcpy(server.sendbuf,
                  p_msg2_full,
-                 msg2_size + sizeof(ra_samp_response_header_t))) {
-        DBG(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
-        ret = SP_INTERNAL_ERROR;
-        return ret;
-    }
+                 msg2_size + sizeof(ra_samp_response_header_t));
 
     if (server.SendTo(msg2_size + sizeof(ra_samp_response_header_t)) < 0) {
         DBG(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
@@ -333,7 +312,6 @@ int myaesdecrypt(const ra_samp_request_header_t *p_msgenc,
     DBG(stdout, "\nSend Decrypt Data Done.");
     return ret;
 }
-
 
 int pkg_keyreq(const uint8_t *p_msg,
                uint32_t msg_size,
@@ -346,7 +324,7 @@ int pkg_keyreq(const uint8_t *p_msg,
         (msg_size > BUFSIZ)) {
         return -1;
     }
-    int ret = 0;
+    int ret = 0, res = 0;
     uint8_t data[BUFSIZ];
     Proofs proofs;
     int msg2_size;
@@ -358,16 +336,24 @@ int pkg_keyreq(const uint8_t *p_msg,
     ra_samp_response_header_t *p_msg2_full = NULL;
     uint32_t data_size = msg_size - SGX_AESGCM_MAC_SIZE;
 
+    std::vector<uint8_t> ir_sig, ir;
+
 
     // parse msg body to json
-    json j_msg;
+    json j_body, j_ir;
     {
         std::string msg_body((char *) p_msg);
         std::cout << msg_body << std::endl;
-        j_msg = json::parse(msg_body);
-        j_msg.at("prf").get_to(vec_prf);
-        j_msg.at("pms").get_to(vec_pms);
+        j_body = json::parse(msg_body);
     }
+    j_body.at("ir").get_to(j_ir);
+    j_body.at("ir_sig").get_to(ir_sig);
+
+    ir = json::to_bjdata(j_ir);
+    res = ecdsa_verify(ir, ir_sig, "param/lm-verify.pem");
+
+    j_ir.at("prf").get_to(vec_prf);
+    j_ir.at("pms").get_to(vec_pms);
 
     std::copy(vec_prf.begin(), vec_prf.end(), data);
     DBG(stderr, "\nstart deserialise");
@@ -398,11 +384,14 @@ int pkg_keyreq(const uint8_t *p_msg,
 
     dk_to_bytes(p_data, &aibeAlgo.dk1, aibeAlgo.size_comp_G1);
     data_size = aibeAlgo.size_comp_G1 * 2 + aibeAlgo.size_Zr;
+    std::vector<uint8_t> vec_pkey(p_data, p_data + data_size), vec_pkey_sig, vec_ct;
 
-    std::vector<uint8_t> vec_pkey(p_data, p_data + data_size);
+    ecc_encrypt(vec_pkey, vec_ct, "param/client-pk.pem");
+    ecdsa_sign(vec_ct, vec_pkey_sig, "param/pkg-sign.pem");
 
     json j_res{
-            {"pkey", vec_pkey}
+            {"pkey_ct", vec_ct},
+            {"sig",  vec_pkey_sig}
     };
     std::string msg_body = j_res.dump();
 
@@ -421,6 +410,11 @@ int pkg_keyreq(const uint8_t *p_msg,
     p_response->status[0] = 0;
     p_response->status[1] = 0;
     strcpy((char *)p_response->body, msg_body.c_str());
+
+    if (!res) {
+        p_response->size = 0;
+        p_response->status[1] = 1;
+    }
 
 // send to LM
     memset(server.sendbuf, 0, BUFSIZ);
@@ -455,8 +449,8 @@ int pkg_keygen(const ra_samp_request_header_t *p_msg,
     ra_samp_response_header_t *p_msg2_full = NULL;
     uint32_t data_size = msg_size - SGX_AESGCM_MAC_SIZE;
 
-    memcpy_s(p_data, msg_size, p_msg, msg_size);
-    memcpy_s(mac, SGX_AESGCM_MAC_SIZE, p_data + data_size, SGX_AESGCM_MAC_SIZE);
+    memcpy(p_data, p_msg, msg_size);
+    memcpy(mac, p_data + data_size, SGX_AESGCM_MAC_SIZE);
     do {
         ret = enclave_decrypt(
                 id,
@@ -516,25 +510,12 @@ int pkg_keygen(const ra_samp_request_header_t *p_msg,
     p_msg2_full->status[0] = 0;
     p_msg2_full->status[1] = 0;
 
-    if (memcpy_s(p_msg2_full->body, data_size, out_data, data_size)) {
-        DBG(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
-        ret = SP_INTERNAL_ERROR;
-        return ret;
-    }
-    if (memcpy_s(p_msg2_full->body + data_size, SGX_AESGCM_MAC_SIZE, mac, SGX_AESGCM_MAC_SIZE)) {
-        DBG(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
-        ret = SP_INTERNAL_ERROR;
-        return ret;
-    }
+    memcpy(p_msg2_full->body, out_data, data_size);
+    memcpy(p_msg2_full->body + data_size, mac, SGX_AESGCM_MAC_SIZE);
     memset(server.sendbuf, 0, BUFSIZ);
-    if (memcpy_s(server.sendbuf,
-                 msg2_size + sizeof(ra_samp_response_header_t),
+    memcpy(server.sendbuf,
                  p_msg2_full,
-                 msg2_size + sizeof(ra_samp_response_header_t))) {
-        DBG(stderr, "\nError, memcpy failed in [%s]-[%d].", __FUNCTION__, __LINE__);
-        ret = SP_INTERNAL_ERROR;
-        return ret;
-    }
+                 msg2_size + sizeof(ra_samp_response_header_t));
 
     if (server.SendTo(msg2_size + sizeof(ra_samp_response_header_t)) < 0) {
         DBG(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
@@ -593,26 +574,11 @@ int main(int argc, char *argv[]) {
         fclose(file_client);
     }
 
-    // todo: signature
+
+    if (0)
     {
-//        std::cout << "Generated client (vk, sk)" << std::endl;
-//
-//        std::string str_idsn = std::to_string(aibeAlgo.idsn());
-//        AutoSeededRandomPool prng;
-//        ECDSA<ECP, SHA256>::PrivateKey sk;
-//        sk.Initialize(prng, ASN1::secp256r1());
-//        ECDSA<ECP, SHA256>::Signer signer(sk);
-//
-//
-//        ECDSA<ECP, SHA256>::PublicKey pk;
-//        sk.MakePublicKey(pk);
-//
-//
-//        FileSink fs_pri("param/ec-pri.pem", true);
-//        PEM_Save(fs_pri, sk);
-//
-//        FileSink fs_pub("param/ec-pub.pem", true);
-//        PEM_Save(fs_pub, pk);
+        std::cout << "Generated pkg (vk, sk)" << std::endl;
+        ecdsa_kgen("../client/param/pkg-verify.pem", "param/pkg-sign.pem");
     }
 
     aibeAlgo.load_param(param_path);
@@ -698,12 +664,7 @@ int main(int argc, char *argv[]) {
                     ret = -1;
                     goto CLEANUP;
                 }
-                if (memcpy_s(p_req, buflen + 2, server.recvbuf, buflen)) {
-                    DBG(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s].",
-                            __FUNCTION__);
-                    ret = -1;
-                    goto CLEANUP;
-                }
+                memcpy(p_req, server.recvbuf, buflen);
                 DBG(OUTPUT, "\nrequest type is %d", p_req->type);
                 switch (p_req->type) {
                     case TYPE_EXIT:
@@ -741,13 +702,8 @@ int main(int argc, char *argv[]) {
                                     __FUNCTION__);
                         } else {
                             memset(server.sendbuf, 0, BUFSIZ);
-                            if (memcpy_s(server.sendbuf, BUFSIZ, p_resp_msg,
-                                         sizeof(ra_samp_response_header_t) + p_resp_msg->size)) {
-                                DBG(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s].",
-                                        __FUNCTION__);
-                                ret = -1;
-                                goto CLEANUP;
-                            }
+                            memcpy(server.sendbuf, p_resp_msg,
+                                         sizeof(ra_samp_response_header_t) + p_resp_msg->size);
                             DBG(OUTPUT, "\nSend Message 2\n");
                             PRINT_BYTE_ARRAY(OUTPUT, p_resp_msg, 176);
                             int buflen = server.SendTo(sizeof(ra_samp_response_header_t) + p_resp_msg->size);
@@ -770,13 +726,8 @@ int main(int argc, char *argv[]) {
                                     __FUNCTION__);
                         } else {
                             memset(server.sendbuf, 0, BUFSIZ);
-                            if (memcpy_s(server.sendbuf, BUFSIZ, p_resp_msg,
-                                         sizeof(ra_samp_response_header_t) + p_resp_msg->size)) {
-                                DBG(OUTPUT, "\nError: INTERNAL ERROR - memcpy failed in [%s].",
-                                        __FUNCTION__);
-                                ret = -1;
-                                goto CLEANUP;
-                            }
+                            memcpy(server.sendbuf, p_resp_msg,
+                                         sizeof(ra_samp_response_header_t) + p_resp_msg->size);
                             DBG(OUTPUT, "\nSend attestation data\n");
                             PRINT_BYTE_ARRAY(OUTPUT, p_resp_msg, sizeof(ra_samp_response_header_t) + p_resp_msg->size);
                             int buflen = server.SendTo(sizeof(ra_samp_response_header_t) + p_resp_msg->size);

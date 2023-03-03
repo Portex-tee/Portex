@@ -1,7 +1,3 @@
-//
-// Created by jojjiw on 2022/3/17.
-//
-
 #ifndef PBC_TEST_AIBE_H
 #define PBC_TEST_AIBE_H
 
