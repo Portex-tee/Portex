@@ -5,10 +5,13 @@
 #include <pbc/pbc_test.h>
 #include <cmath>
 
-#define N_ID (8)
-#define N_SN (12)
+#define N_ID (10)
+#define N_SN (10)
 #define N_IDSN (N_ID + N_SN)
 #define BLOCK_MAX 8
+
+#define rbits (160)
+#define qbits (512)
 
 const int z_size = N_IDSN + 1;
 const int ID = 0xAA;

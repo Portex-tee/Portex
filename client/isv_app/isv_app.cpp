@@ -41,6 +41,7 @@
 #include <unistd.h>
 #include <json.hpp>
 #include "ec_crypto.h"
+#include <chrono>
 
 // Needed for definition of remote attestation messages.
 #include "remote_attestation_result.h"
@@ -95,6 +96,12 @@
 #define _T(x) x
 
 using json = nlohmann::json;
+using namespace std::chrono;
+
+const std::string out_dir = "/media/jojjiw/EX/ub-space/Accountable-data/testing-data/lambda/lambda_" + std::to_string(qbits) + "_";
+//const std::string out_dir = "/media/jojjiw/EX/ub-space/Accountable-data/testing-data/N_SN/N_SN_" + std::to_string(N_SN) + "_";
+//const std::string out_dir = "/media/jojjiw/EX/ub-space/Accountable-data/testing-data/";
+std::ofstream ofstream;
 
 FILE *OUTPUT = stdout;
 
@@ -109,8 +116,7 @@ void getLocalTime(char *timeStr, int len, struct timeval tv) {
     sprintf(timeStr, "%s.%03ld", timeStr, milliseconds);
 }
 
-int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT, double &time) {
-
+int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT, bool is_test = false) {
     int ret = 0;
     sgx_status_t status = SGX_SUCCESS;
     ra_samp_request_header_t *p_request = NULL;
@@ -123,10 +129,12 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enc
     std::string sig, str_idsn;
     std::vector<uint8_t> vec_pms, vec_idsn, vec_sig, vec_pkey, vec_pkey_sig, vec_ct;
 
-//    test
-    clock_t st, et;
-    json j_res;
+    microseconds t[6];
+    time_point<steady_clock> ps1, ps2, is1, is2, pe1, pe2, ie1, ie2;
 
+    ps1 = steady_clock::now();
+
+    json j_res;
     uint8_t p_data[LENOFMSE] = {0};
 
     // get idsn signature
@@ -136,7 +144,9 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enc
     ecdsa_sign(vec_idsn, vec_sig, "param/ec-pri.pem");
 
     // get R and put into jason
+    is1 = steady_clock::now();
     aibeAlgo.keygen1(aibeAlgo.idsn());
+    ie1 = steady_clock::now();
 
     data_size = aibeAlgo.size_comp_G1;
     element_to_bytes_compressed(p_data, aibeAlgo.R);
@@ -168,17 +178,20 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enc
     // send request
     memset(client.sendbuf, 0, BUFSIZ);
     memcpy(client.sendbuf, p_request, sizeof(ra_samp_request_header_t) + msg_size);
+    pe1 = steady_clock::now();
+
     client.SendTo(sizeof(ra_samp_request_header_t) + msg_size);
 
+
     // recv
+
     recvlen = client.RecvFrom();
     p_response = (ra_samp_response_header_t *) malloc(
             sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
-
-    et = clock();
-    time = et - st;
-
     memcpy(p_response, client.recvbuf, recvlen);
+
+    ps2 = steady_clock::now();
+
     if ((p_response->type != TYPE_LM_KEYREQ)) {
         DBG(stderr, "Error: INTERNAL ERROR - recv type error in [%s]-[%d].",
             __FUNCTION__, __LINE__);
@@ -195,7 +208,7 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enc
         goto CLEANUP;
     }
 
-    j_res = json::parse(std::string((char *)p_response->body));
+    j_res = json::parse(std::string((char *) p_response->body));
     j_res.at("pkey_ct").get_to(vec_ct);
     j_res.at("sig").get_to(vec_pkey_sig);
 
@@ -220,10 +233,13 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enc
         ELE_DBG(stdout, "dk'.d3: %B\n", aibeAlgo.dk1.d3);
     }
 
+
+    is2 = steady_clock::now();
     if (aibeAlgo.keygen3()) {
         ret = -1;
         goto CLEANUP;
     }
+    ie2 = steady_clock::now();
 
     {
         DBG(stdout, "Data of dk is\n");
@@ -231,9 +247,28 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enc
         ELE_DBG(stdout, "dk.d2: %B\n", aibeAlgo.dk.d2);
         ELE_DBG(stdout, "dk.d3: %B\n", aibeAlgo.dk.d3);
     }
-    aibeAlgo.dk_store();
+    if (!is_test)
+        aibeAlgo.dk_store();
 
-    CLEANUP:
+    pe2 = steady_clock::now();
+
+CLEANUP:
+    t[0] = duration_cast<microseconds>(pe1 - ps1);
+    t[1] = duration_cast<microseconds>(ie1 - is1);
+    t[2] = t[0] - t[1];
+    t[3] = duration_cast<microseconds>(pe2 - ps2);
+    t[4] = duration_cast<microseconds>(ie2 - is2);
+    t[5] = t[3] - t[4];
+    if (is_test) {
+        for (int j = 0; j < 6; ++j) {
+            ofstream << t[j].count();
+            if (j == 5)
+                ofstream << std::endl;
+            else
+                ofstream << ',';
+        }
+    }
+
     SAFE_FREE(p_response);
     return ret;
 }
@@ -353,12 +388,12 @@ int main(int argc, char *argv[]) {
     uint8_t result;
 
 //    test vars
-    int loops = 1;
+    int loops = 100;
     clock_t cnt;
     clock_t start, end;
     double sum, sum_pkg, ra_temp;
     double ts[10100], ts_pkg[10100];
-    json j;
+    json js;
 
     aibeAlgo.id = ID;
     aibeAlgo.sn = SN;
@@ -449,40 +484,29 @@ int main(int argc, char *argv[]) {
             ct_size = aibeAlgo.encrypt(ct_buf, (char *) msg_buf, aibeAlgo.idsn());
 
             ct = std::vector<uint8_t>(ct_buf, ct_buf + ct_size);
-            j = json{
+            js = json{
                     {"id", ID},
                     {"sn", SN},
                     {"ct", ct}
             };
 
-            std::ofstream(ct_path) << j;
+            std::ofstream(ct_path) << js;
 
             DBG(OUTPUT, "encrypt size: %d, block size %d\n", ct_size, aibeAlgo.size_block);
 
             break;
 
         case 2:
-
-            sum = sum_pkg = 0;
             aibeAlgo.mpk_load();
-            for (int i = 0; i < loops; ++i) {
-                start = clock();
 
-                if (client.client("127.0.0.1", lm_port) != 0) {
-                    DBG(OUTPUT, "Connect Server Error, Exit!\n");
-                    ret = -1;
-                    goto CLEANUP;
-                }
-                client_keyreq(client, aibeAlgo, enclave_id, OUTPUT, ts_pkg[i]);
-                DBG(OUTPUT, "Key request finished\n");
-//                ts_pkg[i] += ra_temp;
-                end = clock();
-                ts[i] = end - start;
-                sum += ts[i];
-//                sum_pkg += ts_pkg[i];
+            if (client.client("127.0.0.1", lm_port) != 0) {
+                DBG(OUTPUT, "Connect Server Error, Exit!\n");
+                ret = -1;
+                goto CLEANUP;
             }
+            client_keyreq(client, aibeAlgo, enclave_id, OUTPUT);
+            DBG(OUTPUT, "Key request finished\n");
 
-//            printf("%d,%lf\n", N, sum / loops);
             break;
 
         case 3:
@@ -491,10 +515,10 @@ int main(int argc, char *argv[]) {
             DBG(OUTPUT, "Client: setup finished\n");
             DBG(OUTPUT, "Start Decrypt\n");
 
-            std::ifstream(ct_path) >> j;
-            j.at("ct").get_to(ct);
-            j.at("id").get_to(aibeAlgo.id);
-            j.at("sn").get_to(aibeAlgo.sn);
+            std::ifstream(ct_path) >> js;
+            js.at("ct").get_to(ct);
+            js.at("id").get_to(aibeAlgo.id);
+            js.at("sn").get_to(aibeAlgo.sn);
             ct_size = ct.size();
 
             DBG(OUTPUT, "decrypt size: %d, ct size: %zu\n", ct_size, ct.size());
@@ -561,6 +585,135 @@ int main(int argc, char *argv[]) {
             break;
 
         case 101:
+            // time of Portex.Enc
+        {
+            std::string enc_path = out_dir + "time-Enc.csv";
+            ofstream.open(enc_path);
+            aibeAlgo.mpk_load();
+            msg_size = 256;
+            char str[msg_size + 10];
+
+            ofstream << "PortexEnc,IBEEnc,Enc.Setup" << std::endl;
+
+            for (int i = -10; i < loops; ++i) {
+                auto s1 = steady_clock::now();
+
+                DBG(OUTPUT, "Client: setup finished");
+                DBG(OUTPUT, "Start Encrypt\n");
+                std::cout << "Receiver ID: " << std::endl;
+//                  std::cin >> id;
+
+                for (int j = 0; j < msg_size; ++j) {
+                    str[j] = j % 26 + 'a';
+                }
+                str[msg_size] = '\0';
+
+//                fprintf(OUTPUT, "Message:\n%s\n", msg_buf);
+                std::cout << str << std::endl;
+                DBG(OUTPUT, "Message size: %d\n", msg_size);
+
+                auto s2 = steady_clock::now();
+                ct_size = aibeAlgo.encrypt(ct_buf, str, aibeAlgo.idsn());
+                std::cout << aibeAlgo.size_ct_block + msg_size << std::endl;
+//                std::cout << aibeAlgo.idsn() << std::endl;
+                auto e2 = steady_clock::now();
+
+                ct = std::vector<uint8_t>(ct_buf, ct_buf + ct_size);
+                js = json{
+                        {"id", ID},
+                        {"sn", SN},
+                        {"ct", ct}
+                };
+
+                std::ofstream(ct_path) << js;
+
+                DBG(OUTPUT, "encrypt size: %d, block size %d\n", ct_size, aibeAlgo.size_block);
+
+                auto e1 = steady_clock::now();
+
+                auto t1 = duration_cast<microseconds>(e1 - s1);
+                auto t2 = duration_cast<microseconds>(e2 - s2);
+
+                if (i >= 0) {
+                    ofstream << t1.count() << ',' << t2.count() << ',' << (t1 - t2).count() << std::endl;
+                }
+            }
+        }
+            break;
+
+        case 102:
+            // Portex.KReq
+        {
+
+            std::string file = out_dir + "time-KReq-Client.csv";
+            ofstream.open(file);
+            ofstream << "Portex.KreqC1,IBE.KGenC1,KReq.SendReq,Portex.KreqC2,IBE.KGenC2,KReq.Verify" << std::endl;
+
+            aibeAlgo.mpk_load();
+
+            for (int i = -10; i < loops; ++i) {
+
+                if (client.client("127.0.0.1", lm_port) != 0) {
+                    DBG(OUTPUT, "Connect Server Error, Exit!\n");
+                    ret = -1;
+                    goto CLEANUP;
+                }
+                client_keyreq(client, aibeAlgo, enclave_id, OUTPUT, i >= 0);
+                DBG(OUTPUT, "Key request finished\n");
+
+            }
+        }
+            break;
+
+        case 103:
+            // time of Portex.Dec
+        {
+            std::string dec_path = out_dir + "time-Dec.csv";
+            ofstream.open(dec_path);
+            aibeAlgo.mpk_load();
+            aibeAlgo.dk_load();
+
+            ofstream << "Portex.Dec,IBE.Dec,Dec.Setup" << std::endl;
+
+            for (int i = -10; i < loops; ++i) {
+                auto s1 = steady_clock::now();
+
+                DBG(OUTPUT, "Client: setup finished\n");
+                DBG(OUTPUT, "Start Decrypt\n");
+
+
+                std::ifstream(ct_path) >> js;
+                js.at("ct").get_to(ct);
+                js.at("id").get_to(aibeAlgo.id);
+                js.at("sn").get_to(aibeAlgo.sn);
+                ct_size = ct.size();
+
+                DBG(OUTPUT, "decrypt size: %d, ct size: %zu\n", ct_size, ct.size());
+
+                std::copy(ct.begin(), ct.end(), ct_buf);
+
+                auto s2 = steady_clock::now();
+                aibeAlgo.decrypt(msg_buf, ct_buf, ct_size);
+                auto e2 = steady_clock::now();
+                printf("%s\n", msg_buf);
+
+                f = fopen(out_path, "w+");
+                fwrite(msg_buf, strlen((char *) msg_buf), 1, f);
+                fclose(f);
+
+                auto e1 = steady_clock::now();
+
+                auto t1 = duration_cast<microseconds>(e1 - s1);
+                auto t2 = duration_cast<microseconds>(e2 - s2);
+
+                if (i >= 0) {
+                    ofstream << t1.count() << ',' << t2.count() << ',' << (t1 - t2).count() << std::endl;
+                }
+            }
+        }
+            break;
+
+        case 201:
 //            test of RA
             DBG(OUTPUT, "Start key generation\n");
             // SOCKET: connect to server
@@ -594,7 +747,9 @@ int main(int argc, char *argv[]) {
             DBG(OUTPUT, "A-IBE Success Keygen \n");
 
             break;
-        case 102:
+
+
+        case 202:
 //            test of aes
 
             enclave_use(enclave_id);
@@ -657,7 +812,7 @@ int main(int argc, char *argv[]) {
             break;
 
 
-        case 103:
+        case 203:
             enclave_use(enclave_id);
 
             sum = 0;
@@ -737,7 +892,7 @@ int main(int argc, char *argv[]) {
 
             break;
 
-        case 104:
+        case 204:
 
             enclave_ecc_init(enclave_id,
                              &status,
@@ -828,6 +983,7 @@ int main(int argc, char *argv[]) {
 
 
     CLEANUP:
+    ofstream.close();
     terminate(client);
     client.Cleanupsocket();
     sgx_destroy_enclave(enclave_id);
