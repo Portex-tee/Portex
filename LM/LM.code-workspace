@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"makefile.launchConfigurations": [
+			{
+				"cwd": "/media/jojjiw/EX/ub-space/SGXAibeProject/LM",
+				"binaryPath": "/media/jojjiw/EX/ub-space/SGXAibeProject/LM/app",
+				"binaryArgs": []
+			}
+		]
+	}
+}

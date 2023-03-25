@@ -40,6 +40,8 @@
 #include <json.hpp>
 #include <vector>
 #include "ec_crypto.h"
+#include <chrono>
+#include <drogon/drogon.h>
 
 // Needed for definition of remote attestation messages.
 #include "remote_attestation_result.h"
@@ -88,9 +90,14 @@
 #define ELE_DBG(...) if(debug_enable)(element_fprintf(__VA_ARGS__))
 
 using json = nlohmann::json;
+using namespace std::chrono;
+using namespace drogon;
 
-int rbits = 160;
-int qbits = (1 << 8); // lambda
+const std::string out_dir = "/media/jojjiw/EX/ub-space/Accountable-data/testing-data/lambda/lambda_" + std::to_string(qbits) + "_";
+//const std::string out_dir = "/media/jojjiw/EX/ub-space/Accountable-data/testing-data/N_SN/N_SN_" + std::to_string(N_SN) + "_";
+//const std::string out_dir = "/media/jojjiw/EX/ub-space/Accountable-data/testing-data/";
+std::ofstream ofstream;
+const bool is_test = true;
 
 uint8_t *msg1_samples[] = {msg1_sample1, msg1_sample2};
 uint8_t *msg2_samples[] = {msg2_sample1, msg2_sample2};
@@ -319,6 +326,9 @@ int pkg_keyreq(const uint8_t *p_msg,
                sgx_status_t *status,
                AibeAlgo &aibeAlgo,
                NetworkServer &server) {
+
+    microseconds t[3];
+    time_point<steady_clock> s[3], e[3];
     std::vector<uint8_t> vec_prf, vec_pms;
     if (!p_msg ||
         (msg_size > BUFSIZ)) {
@@ -339,6 +349,7 @@ int pkg_keyreq(const uint8_t *p_msg,
 
     std::vector<uint8_t> ir_sig, ir;
 
+    s[0] = steady_clock::now();
 
     // parse msg body to json
     json j_body, j_ir, j_node;
@@ -372,13 +383,17 @@ int pkg_keyreq(const uint8_t *p_msg,
     element_from_bytes_compressed(aibeAlgo.R, p_data);
     aibeAlgo.set_Hz(aibeAlgo.idsn());
 
+    e[0] = steady_clock::now();
+
     {
         DBG(stdout, "\nData of Hz and R is\n");
         ELE_DBG(stdout, "Hz: %B\n", aibeAlgo.Hz);
         ELE_DBG(stdout, "R: %B\n", aibeAlgo.R);
     }
 
+    s[1] = steady_clock::now();
     aibeAlgo.keygen2();
+    e[1] = steady_clock::now();
 
     {
         DBG(stdout, "\nData of dk' is\n");
@@ -386,6 +401,8 @@ int pkg_keyreq(const uint8_t *p_msg,
         ELE_DBG(stdout, "dk'.d2: %B\n", aibeAlgo.dk1.d2);
         ELE_DBG(stdout, "dk'.d3: %B\n", aibeAlgo.dk1.d3);
     }
+
+    s[2] = steady_clock::now();
 
     dk_to_bytes(p_data, &aibeAlgo.dk1, aibeAlgo.size_comp_G1);
     data_size = aibeAlgo.size_comp_G1 * 2 + aibeAlgo.size_Zr;
@@ -399,6 +416,8 @@ int pkg_keyreq(const uint8_t *p_msg,
             {"sig",     vec_pkey_sig}
     };
     std::string msg_body = j_res.dump();
+
+    e[2] = steady_clock::now();
 
     msg2_size = msg_body.size() + 1;
     p_response = (ra_samp_response_header_t *) malloc(msg2_size + sizeof(ra_samp_response_header_t));
@@ -432,6 +451,18 @@ int pkg_keyreq(const uint8_t *p_msg,
     }
 
     DBG(stdout, "\nKeyreq Done.");
+
+    if (is_test) {
+        for (int j = 0; j < 3; ++j) {
+            t[j] = duration_cast<microseconds>(e[j] - s[j]);
+            ofstream << t[j].count();
+            if (j == 2)
+                ofstream << std::endl;
+            else
+                ofstream << ',';
+        }
+    }
+
     return ret;
 }
 
@@ -500,6 +531,12 @@ int main(int argc, char *argv[]) {
         char buff[256];
         sprintf(buff, "cp %s %s", mpk_path, client_mpk_path);
         system(buff);
+    }
+
+    if (is_test) {
+        std::string file = out_dir + "time-KReq-PKG.csv";
+        ofstream.open(file);
+        ofstream << "KReq.LogVerify,IBE.KGenPKG,KReq.SendPkey" << std::endl;
     }
 
     aibeAlgo.mpk_load();
@@ -656,6 +693,7 @@ int main(int argc, char *argv[]) {
                         break;
                     case TYPE_RA_KEYREQ:
                         DBG(OUTPUT, "\nProcess Keyreq");
+
                         ret = pkg_keyreq((const uint8_t *) ((uint8_t *) p_req +
                                                             sizeof(ra_samp_request_header_t)),
                                          p_req->size,

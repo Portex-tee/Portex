@@ -39,6 +39,8 @@
 #include <unistd.h>
 #include <json.hpp>
 #include "ec_crypto.h"
+#include <chrono>
+#include <drogon/drogon.h>
 
 // Needed for definition of remote attestation messages.
 #include "remote_attestation_result.h"
@@ -86,6 +88,8 @@
 #define ENCLAVE_PATH "isv_enclave.signed.so"
 
 using json = nlohmann::json;
+using namespace std::chrono;
+
 extern char sendbuf[BUFSIZ]; //数据传送的缓冲区
 extern char recvbuf[BUFSIZ];
 
@@ -95,6 +99,11 @@ extern char recvbuf[BUFSIZ];
 // these scenarios.
 #define _T(x) x
 
+const bool is_test = true;
+const std::string out_dir = "/media/jojjiw/EX/ub-space/Accountable-data/testing-data/lambda/lambda_" + std::to_string(qbits) + "_";
+//const std::string out_dir = "/media/jojjiw/EX/ub-space/Accountable-data/testing-data/N_SN/N_SN_" + std::to_string(N_SN) + "_";
+//const std::string out_dir = "/media/jojjiw/EX/ub-space/Accountable-data/testing-data/";
+std::ofstream ofstream;
 
 int lm_keyreq(const uint8_t *p_msg,
               uint32_t msg_size,
@@ -103,6 +112,8 @@ int lm_keyreq(const uint8_t *p_msg,
               FILE *OUTPUT,
               NetworkClient client,
               NetworkServer server) {
+
+    auto s = steady_clock::now();
 
     int ret = 0;
     uint8_t data[BUFSIZ];
@@ -169,6 +180,13 @@ int lm_keyreq(const uint8_t *p_msg,
     str_body = j_body.dump();
     std::cout << str_body << std::endl;
     msg2_size = str_body.size() + 1;
+
+    auto e = steady_clock::now();
+    auto dt = duration_cast<microseconds>(e - s);
+
+    if (is_test) {
+        ofstream << dt.count() << std::endl;
+    }
 
     // send request to pkg
     p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg2_size);
@@ -279,6 +297,12 @@ int main(int argc, char *argv[]) {
     if( 1 ) {
         std::cout << "Generate LM signing key pair (vk, sk)" << std::endl;
         ecdsa_kgen("../pkg/param/lm-verify.pem", "param/lm-sign.pem");
+    }
+
+    if (is_test) {
+        std::string file = out_dir + "time-KReq-LM.csv";
+        ofstream.open(file);
+        ofstream << "KReq-LogGen" << std::endl;
     }
 
     int launch_token_update = 0;
