@@ -41,6 +41,7 @@
 #include <unistd.h>
 #include <json.hpp>
 #include "ec_crypto.h"
+#include <drogon/drogon.h>
 
 // Needed for definition of remote attestation messages.
 #include "remote_attestation_result.h"
@@ -61,7 +62,6 @@
 #include "sgx_uae_service.h"
 
 #include "service_provider.h"
-
 
 // Needed to calculate keys
 
@@ -87,18 +87,24 @@
 
 #define ENCLAVE_PATH "isv_enclave.signed.so"
 
-//1--open   0--close
+// 1--open   0--close
 #define test_enable (1)
 #define debug_enable (1)
-#define DBG(...) if(debug_enable)(fprintf(__VA_ARGS__))
-#define ELE_DBG(...) if(debug_enable)(element_fprintf(__VA_ARGS__))
+#define DBG(...)      \
+    if (debug_enable) \
+    (fprintf(__VA_ARGS__))
+#define ELE_DBG(...)  \
+    if (debug_enable) \
+    (element_fprintf(__VA_ARGS__))
 #define _T(x) x
 
 using json = nlohmann::json;
+using namespace drogon;
 
 FILE *OUTPUT = stdout;
 
-void getLocalTime(char *timeStr, int len, struct timeval tv) {
+void getLocalTime(char *timeStr, int len, struct timeval tv)
+{
     struct tm *ptm;
     long milliseconds;
 
@@ -109,7 +115,8 @@ void getLocalTime(char *timeStr, int len, struct timeval tv) {
     sprintf(timeStr, "%s.%03ld", timeStr, milliseconds);
 }
 
-int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT, double &time) {
+int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT, double &time)
+{
 
     int ret = 0;
     sgx_status_t status = SGX_SUCCESS;
@@ -123,7 +130,7 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enc
     std::string sig, str_idsn;
     std::vector<uint8_t> vec_pms, vec_idsn, vec_sig, vec_pkey, vec_pkey_sig, vec_ct;
 
-//    test
+    //    test
     clock_t st, et;
     json j_res;
 
@@ -150,21 +157,20 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enc
 
     // construct json
     json json1 = {
-            {"id",  aibeAlgo.id},
-            {"sn",  aibeAlgo.sn},
-            {"sig", vec_sig},
-            {"pms", vec_pms}
-    };
+        {"id", aibeAlgo.id},
+        {"sn", aibeAlgo.sn},
+        {"sig", vec_sig},
+        {"pms", vec_pms}};
     msg_body = json1.dump();
 
     // construct request
     msg_size = msg_body.size() + 1;
-    p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);
+    p_request = (ra_samp_request_header_t *)malloc(sizeof(ra_samp_request_header_t) + msg_size);
     p_request->size = msg_size;
     p_request->type = TYPE_LM_KEYREQ;
-    strcpy((char *) p_request->body, msg_body.c_str());
+    strcpy((char *)p_request->body, msg_body.c_str());
 
-    puts((char *) p_request->body);
+    puts((char *)p_request->body);
 
     // send request
     memset(client.sendbuf, 0, BUFSIZ);
@@ -173,14 +179,15 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enc
 
     // recv
     recvlen = client.RecvFrom();
-    p_response = (ra_samp_response_header_t *) malloc(
-            sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
+    p_response = (ra_samp_response_header_t *)malloc(
+        sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *)client.recvbuf)->size);
 
     et = clock();
     time = et - st;
 
     memcpy(p_response, client.recvbuf, recvlen);
-    if ((p_response->type != TYPE_LM_KEYREQ)) {
+    if ((p_response->type != TYPE_LM_KEYREQ))
+    {
         DBG(stderr, "Error: INTERNAL ERROR - recv type error in [%s]-[%d].",
             __FUNCTION__, __LINE__);
         printf("%d\n", p_response->type);
@@ -188,7 +195,8 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enc
         goto CLEANUP;
     }
 
-    if (p_response->status[1]) {
+    if (p_response->status[1])
+    {
         DBG(stderr, "Error: LM ERROR - recv empty response in [%s]-[%d].",
             __FUNCTION__, __LINE__);
         printf("%d\n", p_response->size);
@@ -200,11 +208,13 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enc
     j_res.at("pkey_ct").get_to(vec_ct);
     j_res.at("sig").get_to(vec_pkey_sig);
 
-
     ret = ecdsa_verify(vec_ct, vec_pkey_sig, "./param/pkg-verify.pem");
-    if (ret) {
+    if (ret)
+    {
         std::cout << "pkey signature is valid" << std::endl;
-    } else {
+    }
+    else
+    {
         std::cout << "ERR: pkey signature verify failed!" << std::endl;
         goto CLEANUP;
     }
@@ -221,7 +231,8 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enc
         ELE_DBG(stdout, "dk'.d3: %B\n", aibeAlgo.dk1.d3);
     }
 
-    if (aibeAlgo.keygen3()) {
+    if (aibeAlgo.keygen3())
+    {
         ret = -1;
         goto CLEANUP;
     }
@@ -234,14 +245,14 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enc
     }
     aibeAlgo.dk_store();
 
-    CLEANUP:
+CLEANUP:
     SAFE_FREE(p_response);
     return ret;
 }
 
-
 int client_keygen(int id, AibeAlgo &aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT, NetworkClient client,
-                  double &time) {
+                  double &time)
+{
     int ret = 0;
     sgx_status_t status = SGX_SUCCESS;
     ra_samp_request_header_t *p_request = NULL;
@@ -251,7 +262,7 @@ int client_keygen(int id, AibeAlgo &aibeAlgo, sgx_enclave_id_t enclave_id, FILE 
     int data_size;
     int msg_size;
 
-//    test
+    //    test
     clock_t st, et;
 
     uint8_t p_data[LENOFMSE] = {0};
@@ -273,14 +284,14 @@ int client_keygen(int id, AibeAlgo &aibeAlgo, sgx_enclave_id_t enclave_id, FILE 
     ELE_DBG(OUTPUT, "Send R:\n%B", aibeAlgo.R);
 
     msg_size = data_size + SGX_AESGCM_MAC_SIZE;
-    p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);
+    p_request = (ra_samp_request_header_t *)malloc(sizeof(ra_samp_request_header_t) + msg_size);
     p_request->size = msg_size;
     p_request->type = TYPE_RA_KEYGEN;
 
     memcpy(p_request->body, out_data, data_size);
     memcpy(p_request->body + data_size, mac, SGX_AESGCM_MAC_SIZE);
 
-//    PKG communication time
+    //    PKG communication time
     st = clock();
     memset(client.sendbuf, 0, BUFSIZ);
     memcpy(client.sendbuf, p_request, sizeof(ra_samp_request_header_t) + msg_size);
@@ -288,14 +299,15 @@ int client_keygen(int id, AibeAlgo &aibeAlgo, sgx_enclave_id_t enclave_id, FILE 
 
     // keygen 3
     recvlen = client.RecvFrom();
-    p_response = (ra_samp_response_header_t *) malloc(
-            sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
+    p_response = (ra_samp_response_header_t *)malloc(
+        sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *)client.recvbuf)->size);
 
     et = clock();
     time = et - st;
 
     memcpy(p_response, client.recvbuf, recvlen);
-    if ((p_response->type != TYPE_RA_KEYGEN)) {
+    if ((p_response->type != TYPE_RA_KEYGEN))
+    {
         DBG(OUTPUT, "Error: INTERNAL ERROR - return type mismatch in [%s]-[%d].",
             __FUNCTION__, __LINE__);
         ret = -1;
@@ -306,10 +318,10 @@ int client_keygen(int id, AibeAlgo &aibeAlgo, sgx_enclave_id_t enclave_id, FILE 
 
     memcpy(p_data, p_response->body, data_size);
     memcpy(mac, p_response->body + data_size, SGX_AESGCM_MAC_SIZE);
-//    DBG(OUTPUT, "Success Encrypt\n");
-//    PRINT_BYTE_ARRAY(OUTPUT, p_data, sizeof(p_data));
-//    DBG(OUTPUT, "Encrypt Mac\n");
-//    PRINT_BYTE_ARRAY(OUTPUT, mac, SGX_AESGCM_MAC_SIZE);
+    //    DBG(OUTPUT, "Success Encrypt\n");
+    //    PRINT_BYTE_ARRAY(OUTPUT, p_data, sizeof(p_data));
+    //    DBG(OUTPUT, "Encrypt Mac\n");
+    //    PRINT_BYTE_ARRAY(OUTPUT, mac, SGX_AESGCM_MAC_SIZE);
 
     ra_decrypt(p_data, data_size, out_data, mac, enclave_id, OUTPUT);
 
@@ -321,7 +333,8 @@ int client_keygen(int id, AibeAlgo &aibeAlgo, sgx_enclave_id_t enclave_id, FILE 
         ELE_DBG(stdout, "dk'.d3: %B\n", aibeAlgo.dk1.d3);
     }
 
-    if (aibeAlgo.keygen3()) {
+    if (aibeAlgo.keygen3())
+    {
         ret = -1;
         goto CLEANUP;
     }
@@ -333,14 +346,14 @@ int client_keygen(int id, AibeAlgo &aibeAlgo, sgx_enclave_id_t enclave_id, FILE 
         ELE_DBG(stdout, "dk.d3: %B\n", aibeAlgo.dk.d3);
     }
 
-    CLEANUP:
+CLEANUP:
     SAFE_FREE(p_response);
     return ret;
 }
 
-
 // todo: change to json
-int client_trace(NetworkClient client) {
+int client_trace(NetworkClient client)
+{
 
     int ret = 0;
     sgx_status_t status = SGX_SUCCESS;
@@ -355,22 +368,23 @@ int client_trace(NetworkClient client) {
     char timeStr[128];
 
     msg_size = sizeof(int);
-    p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);
+    p_request = (ra_samp_request_header_t *)malloc(sizeof(ra_samp_request_header_t) + msg_size);
     p_request->size = msg_size;
     p_request->type = TYPE_LM_TRACE;
-    *((int *) p_request->body) = IDSN;
+    *((int *)p_request->body) = IDSN;
 
     memset(client.sendbuf, 0, BUFSIZ);
     memcpy(client.sendbuf, p_request, sizeof(ra_samp_request_header_t) + msg_size);
     client.SendTo(sizeof(ra_samp_request_header_t) + msg_size);
 
-// recv
+    // recv
     recvlen = client.RecvFrom();
-    p_response = (ra_samp_response_header_t *) malloc(
-            sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
+    p_response = (ra_samp_response_header_t *)malloc(
+        sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *)client.recvbuf)->size);
 
     memcpy(p_response, client.recvbuf, recvlen);
-    if ((p_response->type != TYPE_LM_TRACE)) {
+    if ((p_response->type != TYPE_LM_TRACE))
+    {
         DBG(stderr, "Error: INTERNAL ERROR - recv type error in [%s]-[%d].",
             __FUNCTION__, __LINE__);
         printf("%d\n", p_response->type);
@@ -380,41 +394,44 @@ int client_trace(NetworkClient client) {
     DBG(OUTPUT, "Log list received");
 
     n = p_response->size / sizeof(timeval);
-    tv_list = (timeval *) p_response->body;
+    tv_list = (timeval *)p_response->body;
 
     fprintf(OUTPUT, "\nID: %d\n", IDSN);
-    for (int i = 0; i < n; ++i) {
+    for (int i = 0; i < n; ++i)
+    {
         getLocalTime(timeStr, sizeof(timeStr), tv_list[i]);
         printf("<%d>: %s\n", i, timeStr);
     }
 
-    CLEANUP:
+CLEANUP:
     SAFE_FREE(p_request);
     SAFE_FREE(p_response);
     return ret;
 }
 
-int client_inspect(const std::string &dk2_path, AibeAlgo &aibeAlgo) {
+int client_inspect(const std::string &dk2_path, AibeAlgo &aibeAlgo)
+{
     aibeAlgo.dk_load();
     aibeAlgo.dk2_load(dk2_path);
     aibeAlgo.mpk_load();
     aibeAlgo.set_Hz(IDSN);
 
-    if (!aibeAlgo.dk_verify()) {
+    if (!aibeAlgo.dk_verify())
+    {
         printf("Client decrypt key is invalid!\n");
         return -1;
     }
     printf("Client decrypt key is valid!\n");
 
-    if (!aibeAlgo.dk_verify(aibeAlgo.dk2)) {
+    if (!aibeAlgo.dk_verify(aibeAlgo.dk2))
+    {
         printf("Input decrypt key is invalid!\n");
         return 0;
     }
     printf("Input decrypt key is valid!\n");
 
-    if (element_cmp(aibeAlgo.dk.d1, aibeAlgo.dk2.d1)
-        || element_cmp(aibeAlgo.dk.d2, aibeAlgo.dk2.d2)
-        || element_cmp(aibeAlgo.dk.d3, aibeAlgo.dk2.d3)) {
+    if (element_cmp(aibeAlgo.dk.d1, aibeAlgo.dk2.d1) || element_cmp(aibeAlgo.dk.d2, aibeAlgo.dk2.d2) || element_cmp(aibeAlgo.dk.d3, aibeAlgo.dk2.d3))
+    {
         printf("Another valid key detected!\n");
         return 1;
     }
@@ -423,8 +440,9 @@ int client_inspect(const std::string &dk2_path, AibeAlgo &aibeAlgo) {
     return 0;
 }
 
-int main(int argc, char *argv[]) {
-//    printf("%d\n", sizeof(uint8_t));
+int main(int argc, char *argv[])
+{
+    //    printf("%d\n", sizeof(uint8_t));
     int ret = 0;
     sgx_enclave_id_t enclave_id = 0;
     AibeAlgo aibeAlgo;
@@ -437,7 +455,6 @@ int main(int argc, char *argv[]) {
     FILE *f;
     int ct_size, msg_size;
     std::string dk2_path;
-
 
     // test
 
@@ -453,7 +470,7 @@ int main(int argc, char *argv[]) {
     sgx_ecc_state_handle_t ecc_handle;
     uint8_t result;
 
-//    test vars
+    //    test vars
     int loops = 1;
     clock_t cnt;
     clock_t start, end;
@@ -463,20 +480,21 @@ int main(int argc, char *argv[]) {
 
     aibeAlgo.id = ID;
     aibeAlgo.sn = SN;
-    //aibe load_param
+    // aibe load_param
 
-////    aibe load_param
-    if (aibeAlgo.load_param(param_path)) {
+    ////    aibe load_param
+    if (aibeAlgo.load_param(param_path))
+    {
         DBG(stderr, "Param File Path error\n");
         exit(-1);
     }
-//    printf("%d, %d, %d\n", aibeAlgo.size_GT, aibeAlgo.size_comp_G1, aibeAlgo.size_Zr);
+    //    printf("%d, %d, %d\n", aibeAlgo.size_GT, aibeAlgo.size_comp_G1, aibeAlgo.size_Zr);
     uint8_t ct_buf[aibeAlgo.size_ct + 10];
     uint8_t msg_buf[aibeAlgo.size_ct + 10];
     std::vector<uint8_t> ct;
     std::vector<uint8_t> msg;
     DBG(OUTPUT, "A-IBE Success Set Up\n");
-////    element init
+    ////    element init
     aibeAlgo.init();
 
     memset(&launch_token, 0, sizeof(sgx_launch_token_t));
@@ -486,7 +504,8 @@ int main(int argc, char *argv[]) {
                                  &launch_token,
                                  &launch_token_update,
                                  &enclave_id, NULL);
-        if (SGX_SUCCESS != ret) {
+        if (SGX_SUCCESS != ret)
+        {
             ret = -1;
             DBG(OUTPUT, "Error, call sgx_create_enclave fail [%s].\n",
                 __FUNCTION__);
@@ -495,397 +514,422 @@ int main(int argc, char *argv[]) {
         DBG(OUTPUT, "Call sgx_create_enclave success.\n");
     }
 
-//    aibeAlgo.load_param(param_path);
-//    aibeAlgo.init();
-//    aibeAlgo.dk_load();
-//    aibeAlgo.mpk_load();
-//    element_random(aibeAlgo.m);
-//    element_printf("%B\n", aibeAlgo.m);
-//    aibeAlgo.block_encrypt(idsn);
-//    aibeAlgo.ct_write();
-//    aibeAlgo.ct_read();
-//    aibeAlgo.block_decrypt();
-//    element_printf("%B\n", aibeAlgo.m);
 
-    for (int i = 0; i < data_len; ++i) {
-        data[i] = i / 10;
-    }
     printf("Please choose a function:\n"
            "1) encrypt\n"
            "2) key request\n"
-           "20) key generation\n"
            "3) decrypt\n"
            "4) log trace\n"
            "5) tee inspect\n"
            "Please input a number:");
     scanf("%d", &mod);
 
+    switch (mod)
+    {
+    case 0:
+    {
+        std::cout << "Generated client (vk, sk)" << std::endl;
 
-    switch (mod) {
-        case 0: {
-            std::cout << "Generated client (vk, sk)" << std::endl;
+        // generate ecdsa signing key pair
+        ecdsa_kgen("param/client-verify.pem", "param/client-sign.pem");
 
-            // generate ecdsa signing key pair
-            ecdsa_kgen("param/client-verify.pem", "param/client-sign.pem");
+        // generate ecc public key pair
+        ecc_kgen("../pkg/param/client-pk.pem", "param/client-sk.pem");
+    }
+    break;
 
-            // generate ecc public key pair
-            ecc_kgen("../pkg/param/client-pk.pem", "param/client-sk.pem");
-        }
-            break;
+    case 1:
+        // Encrypt
+        aibeAlgo.mpk_load();
+        DBG(OUTPUT, "Client: setup finished");
+        DBG(OUTPUT, "Start Encrypt\n");
+        std::cout << "Receiver ID: " << std::endl;
+        //            std::cin >> id;
 
-        case 1:
-            // Encrypt
-            aibeAlgo.mpk_load();
-            DBG(OUTPUT, "Client: setup finished");
-            DBG(OUTPUT, "Start Encrypt\n");
-            std::cout << "Receiver ID: " << std::endl;
-//            std::cin >> id;
+        f = fopen(msg_path, "r+");
+        msg_size = fread(msg_buf, sizeof(uint8_t), aibeAlgo.size_ct, f);
+        fclose(f);
 
-            f = fopen(msg_path, "r+");
-            msg_size = fread(msg_buf, sizeof(uint8_t), aibeAlgo.size_ct, f);
-            fclose(f);
+        fprintf(OUTPUT, "Message:\n%s\n", msg_buf);
+        DBG(OUTPUT, "Message size: %d\n", msg_size);
 
-            fprintf(OUTPUT, "Message:\n%s\n", msg_buf);
-            DBG(OUTPUT, "Message size: %d\n", msg_size);
+        ct_size = aibeAlgo.encrypt(ct_buf, (char *)msg_buf, aibeAlgo.idsn());
 
-            ct_size = aibeAlgo.encrypt(ct_buf, (char *) msg_buf, aibeAlgo.idsn());
+        ct = std::vector<uint8_t>(ct_buf, ct_buf + ct_size);
+        j = json{
+            {"id", ID},
+            {"sn", SN},
+            {"ct", ct}};
 
-            ct = std::vector<uint8_t>(ct_buf, ct_buf + ct_size);
-            j = json{
-                    {"id", ID},
-                    {"sn", SN},
-                    {"ct", ct}
-            };
+        std::ofstream(ct_path) << j;
 
-            std::ofstream(ct_path) << j;
+        DBG(OUTPUT, "encrypt size: %d, block size %d\n", ct_size, aibeAlgo.size_block);
 
-            DBG(OUTPUT, "encrypt size: %d, block size %d\n", ct_size, aibeAlgo.size_block);
+        break;
 
-            break;
+    case 2:
 
-        case 2:
+        sum = sum_pkg = 0;
+        aibeAlgo.mpk_load();
+        for (int i = 0; i < loops; ++i)
+        {
+            start = clock();
 
-            sum = sum_pkg = 0;
-            aibeAlgo.mpk_load();
-            for (int i = 0; i < loops; ++i) {
-                start = clock();
-
-                if (client.client("127.0.0.1", lm_port) != 0) {
-                    DBG(OUTPUT, "Connect Server Error, Exit!\n");
-                    ret = -1;
-                    goto CLEANUP;
-                }
-                client_keyreq(client, aibeAlgo, enclave_id, OUTPUT, ts_pkg[i]);
-                DBG(OUTPUT, "Key request finished\n");
-//                ts_pkg[i] += ra_temp;
-                end = clock();
-                ts[i] = end - start;
-                sum += ts[i];
-//                sum_pkg += ts_pkg[i];
-            }
-
-//            printf("%d,%lf\n", N, sum / loops);
-            break;
-
-        case 20:
-// KGen
-            sum = sum_pkg = 0;
-            aibeAlgo.mpk_load();
-            for (int i = 0; i < loops; ++i) {
-                start = clock();
-                if (client.client("127.0.0.1", pkg_port) != 0) {
-                    DBG(OUTPUT, "Connect Server Error, Exit!\n");
-                    ret = -1;
-                    goto CLEANUP;
-                }
-
-                DBG(OUTPUT, "Start key generation\n");
-                // SOCKET: connect to server
-                ra_temp = clock();
-
-                if (remote_attestation(enclave_id, client) != SGX_SUCCESS) {
-                    DBG(OUTPUT, "Remote Attestation Error, Exit!\n");
-                    ret = -1;
-                    goto CLEANUP;
-                }
-                ra_temp = clock() - ra_temp;
-
-                DBG(OUTPUT, "Client: setup finished");
-////    aibe: keygen
-                if (client_keygen(aibeAlgo.idsn(), aibeAlgo, enclave_id, OUTPUT, client, ts_pkg[i])) {
-                    DBG(stderr, "Key verify failed\n");
-                    goto CLEANUP;
-                }
-                aibeAlgo.dk_store();
-                DBG(OUTPUT, "A-IBE Success Keygen \n");
-
-                ts_pkg[i] += ra_temp;
-                end = clock();
-                ts[i] = end - start;
-                sum += ts[i];
-                sum_pkg += ts_pkg[i];
-            }
-
-//            printf("%d,%lf,%lf\n", N, sum / loops, sum_pkg / loops);
-            break;
-
-        case 3:
-            aibeAlgo.dk_load();
-            aibeAlgo.mpk_load();
-            DBG(OUTPUT, "Client: setup finished\n");
-            DBG(OUTPUT, "Start Decrypt\n");
-
-            std::ifstream(ct_path) >> j;
-            j.at("ct").get_to(ct);
-            j.at("id").get_to(aibeAlgo.id);
-            j.at("sn").get_to(aibeAlgo.sn);
-            ct_size = ct.size();
-
-            DBG(OUTPUT, "decrypt size: %d, ct size: %zu\n", ct_size, ct.size());
-
-            std::copy(ct.begin(), ct.end(), ct_buf);
-
-            aibeAlgo.decrypt(msg_buf, ct_buf, ct_size);
-            printf("%s\n", msg_buf);
-
-            f = fopen(out_path, "w+");
-            fwrite(msg_buf, strlen((char *) msg_buf), 1, f);
-            fclose(f);
-
-            break;
-
-        case 4:
-
-            if (client.client("127.0.0.1", lm_port) != 0) {
+            if (client.client("127.0.0.1", lm_port) != 0)
+            {
                 DBG(OUTPUT, "Connect Server Error, Exit!\n");
                 ret = -1;
                 goto CLEANUP;
             }
-            client_trace(client);
-            DBG(OUTPUT, "Log trace finished\n");
+            client_keyreq(client, aibeAlgo, enclave_id, OUTPUT, ts_pkg[i]);
+            DBG(OUTPUT, "Key request finished\n");
+            //                ts_pkg[i] += ra_temp;
+            end = clock();
+            ts[i] = end - start;
+            sum += ts[i];
+            //                sum_pkg += ts_pkg[i];
+        }
 
-            break;
+        //            printf("%d,%lf\n", N, sum / loops);
+        break;
 
-
-        case 5:
-
-            printf("Please input decrypt key file path:\n");
-            std::cin >> dk2_path;
-            ret = client_inspect(dk2_path, aibeAlgo);
-            DBG(OUTPUT, "[DBG] TEE inspect finished\n");
-
+    case 20:
+        // KGen
+        sum = sum_pkg = 0;
+        aibeAlgo.mpk_load();
+        for (int i = 0; i < loops; ++i)
+        {
+            start = clock();
+            if (client.client("127.0.0.1", pkg_port) != 0)
             {
-                DBG(stdout, "[DBG] Client decrypt key:\n");
-                ELE_DBG(stdout, "dk.d1: %B\n", aibeAlgo.dk.d1);
-                ELE_DBG(stdout, "dk.d2: %B\n", aibeAlgo.dk.d2);
-                ELE_DBG(stdout, "dk.d3: %B\n", aibeAlgo.dk.d3);
+                DBG(OUTPUT, "Connect Server Error, Exit!\n");
+                ret = -1;
+                goto CLEANUP;
             }
 
-            {
-                DBG(stdout, "[DBG] Input decrypt key:\n");
-                ELE_DBG(stdout, "dk2.d1: %B\n", aibeAlgo.dk2.d1);
-                ELE_DBG(stdout, "dk2.d2: %B\n", aibeAlgo.dk2.d2);
-                ELE_DBG(stdout, "dk2.d3: %B\n", aibeAlgo.dk2.d3);
-            }
-
-            switch (ret) {
-                case 0:
-                    printf("PASS: No misbehavior detected!\n");
-                    break;
-                case -1:
-                    printf("ERROR: TEE inspect failed\n");
-                    break;
-                case 1:
-                    printf("FAILED: TEE misbehavior detected!\n");
-                    break;
-                default:
-                    DBG(OUTPUT, "ERROR: TEE inspect failed\n");
-            }
-
-            break;
-
-        case 101:
-//            test of RA
             DBG(OUTPUT, "Start key generation\n");
             // SOCKET: connect to server
-            if (client.client("127.0.0.1", pkg_port) != 0) {
-                DBG(OUTPUT, "Connect Server Error, Exit!\n");
+            ra_temp = clock();
+
+            if (remote_attestation(enclave_id, client) != SGX_SUCCESS)
+            {
+                DBG(OUTPUT, "Remote Attestation Error, Exit!\n");
                 ret = -1;
                 goto CLEANUP;
             }
+            ra_temp = clock() - ra_temp;
 
-
-            sum = 0;
-            for (int i = 0; i < 100; ++i) {
-                start = clock();
-                if (remote_attestation(enclave_id, client) != SGX_SUCCESS) {
-                    DBG(OUTPUT, "Remote Attestation Error, Exit!\n");
-                    ret = -1;
-                    goto CLEANUP;
-                }
-                end = clock();
-                ts[i] = end - start;
-                sum += ts[i];
-            }
-            printf("ra time(ms): %lf\n", double(sum) / CLOCKS_PER_SEC * 10);
-            for (int i = 0; i < 100; ++i) {
-                printf("%ld\n", ts[i]);
-            }
-            aibeAlgo.mpk_load();
             DBG(OUTPUT, "Client: setup finished");
-////    aibe: keygen
-            if (client_keygen(aibeAlgo.idsn(), aibeAlgo, enclave_id, OUTPUT, client, sum_pkg)) {
+            ////    aibe: keygen
+            if (client_keygen(aibeAlgo.idsn(), aibeAlgo, enclave_id, OUTPUT, client, ts_pkg[i]))
+            {
                 DBG(stderr, "Key verify failed\n");
                 goto CLEANUP;
             }
             aibeAlgo.dk_store();
             DBG(OUTPUT, "A-IBE Success Keygen \n");
 
+            ts_pkg[i] += ra_temp;
+            end = clock();
+            ts[i] = end - start;
+            sum += ts[i];
+            sum_pkg += ts_pkg[i];
+        }
+
+        //            printf("%d,%lf,%lf\n", N, sum / loops, sum_pkg / loops);
+        break;
+
+    case 3:
+        aibeAlgo.dk_load();
+        aibeAlgo.mpk_load();
+        DBG(OUTPUT, "Client: setup finished\n");
+        DBG(OUTPUT, "Start Decrypt\n");
+
+        std::ifstream(ct_path) >> j;
+        j.at("ct").get_to(ct);
+        j.at("id").get_to(aibeAlgo.id);
+        j.at("sn").get_to(aibeAlgo.sn);
+        ct_size = ct.size();
+
+        DBG(OUTPUT, "decrypt size: %d, ct size: %zu\n", ct_size, ct.size());
+
+        std::copy(ct.begin(), ct.end(), ct_buf);
+
+        aibeAlgo.decrypt(msg_buf, ct_buf, ct_size);
+        printf("%s\n", msg_buf);
+
+        f = fopen(out_path, "w+");
+        fwrite(msg_buf, strlen((char *)msg_buf), 1, f);
+        fclose(f);
+
+        break;
+
+    case 4:
+
+        if (client.client("127.0.0.1", lm_port) != 0)
+        {
+            DBG(OUTPUT, "Connect Server Error, Exit!\n");
+            ret = -1;
+            goto CLEANUP;
+        }
+        client_trace(client);
+        DBG(OUTPUT, "Log trace finished\n");
+
+        break;
+
+    case 5:
+
+        printf("Please input decrypt key file path:\n");
+        std::cin >> dk2_path;
+        ret = client_inspect(dk2_path, aibeAlgo);
+        DBG(OUTPUT, "[DBG] TEE inspect finished\n");
+
+        {
+            DBG(stdout, "[DBG] Client decrypt key:\n");
+            ELE_DBG(stdout, "dk.d1: %B\n", aibeAlgo.dk.d1);
+            ELE_DBG(stdout, "dk.d2: %B\n", aibeAlgo.dk.d2);
+            ELE_DBG(stdout, "dk.d3: %B\n", aibeAlgo.dk.d3);
+        }
+
+        {
+            DBG(stdout, "[DBG] Input decrypt key:\n");
+            ELE_DBG(stdout, "dk2.d1: %B\n", aibeAlgo.dk2.d1);
+            ELE_DBG(stdout, "dk2.d2: %B\n", aibeAlgo.dk2.d2);
+            ELE_DBG(stdout, "dk2.d3: %B\n", aibeAlgo.dk2.d3);
+        }
+
+        switch (ret)
+        {
+        case 0:
+            printf("PASS: No misbehavior detected!\n");
             break;
-        case 102:
-//            test of aes
-
-            enclave_use(enclave_id);
-            sum = 0;
-            for (int i = 0; i < 100; ++i) {
-                busy_retry_time = 4;
-                start = clock();
-                do {
-                    ret = enclave_encrypt(
-                            enclave_id,
-                            &status,
-                            data,
-                            data_len,
-                            output,
-                            mac);
-                } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
-
-                if (ret != SGX_SUCCESS) {
-                    DBG(OUTPUT, "102 error");
-                    goto CLEANUP;
-                }
-
-                end = clock();
-                ts[i] = end - start;
-                sum += ts[i];
-            }
-            printf("SE Encrypt Time(μs): %lf\n", double(sum) / 100);
-            for (int i = 0; i < 100; ++i) {
-                printf("%d\n", (int) ts[i]);
-            }
-
-            sum = 0;
-            for (int i = 0; i < 100; ++i) {
-                busy_retry_time = 4;
-                start = clock();
-                do {
-                    ret = enclave_encrypt(
-                            enclave_id,
-                            &status,
-                            output,
-                            data_len,
-                            data,
-                            mac);
-                } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
-
-
-                if (ret != SGX_SUCCESS) {
-                    DBG(OUTPUT, "102 error");
-                    goto CLEANUP;
-                }
-
-                end = clock();
-                ts[i] = end - start;
-                sum += ts[i];
-            }
-            printf("SE Decrypt Time(μs): %lf\n", double(sum) / 100);
-            for (int i = 0; i < 100; ++i) {
-                printf("%d\n", (int) ts[i]);
-            }
+        case -1:
+            printf("ERROR: TEE inspect failed\n");
             break;
-
-
-        case 103:
-            enclave_use(enclave_id);
-
-            sum = 0;
-            for (int i = 0; i < 100; ++i) {
-                start = clock();
-
-                ret = enclave_ecc_init(enclave_id,
-                                       &status,
-                                       &ecc_pri,
-                                       &ecc_pub,
-                                       &ecc_handle);
-
-                if (ret != SGX_SUCCESS && status != SGX_SUCCESS) {
-                    DBG(OUTPUT, "103 error");
-                    goto CLEANUP;
-                }
-                end = clock();
-                ts[i] = end - start;
-                sum += ts[i];
-            }
-            printf("ECDSA Kgen Time(μs): %lf\n", double(sum) / 100);
-            for (int i = 0; i < 100; ++i) {
-                printf("%d\n", (int) ts[i]);
-            }
-
-            sum = 0;
-            for (int i = 0; i < 100; ++i) {
-                start = clock();
-
-                ret = enclave_ecc_sign(enclave_id,
-                                       &status,
-                                       data,
-                                       data_len,
-                                       &ecc_pri,
-                                       &ecc_sig,
-                                       (uint8_t *) &ecc_handle);
-
-                if (ret != SGX_SUCCESS) {
-                    DBG(OUTPUT, "103 error");
-                    goto CLEANUP;
-                }
-                end = clock();
-                ts[i] = end - start;
-                sum += ts[i];
-            }
-            printf("ECDSA Sign Time(μs): %lf\n", double(sum) / 100);
-            for (int i = 0; i < 100; ++i) {
-                printf("%d\n", (int) ts[i]);
-            }
-
-            sum = 0;
-            for (int i = 0; i < 100; ++i) {
-                start = clock();
-
-                ret = enclave_ecc_verify(enclave_id,
-                                         &status,
-                                         data,
-                                         data_len,
-                                         &ecc_pub,
-                                         &ecc_sig,
-                                         &result,
-                                         (uint8_t *) &ecc_handle);
-
-                if (ret != SGX_SUCCESS) {
-                    DBG(OUTPUT, "103 error");
-                    goto CLEANUP;
-                }
-
-                end = clock();
-                ts[i] = end - start;
-                sum += ts[i];
-            }
-            printf("ECDSA Verify Time(μs): %lf\n", double(sum) / 100);
-            for (int i = 0; i < 100; ++i) {
-                printf("%d\n", (int) ts[i]);
-            }
-
+        case 1:
+            printf("FAILED: TEE misbehavior detected!\n");
             break;
+        default:
+            DBG(OUTPUT, "ERROR: TEE inspect failed\n");
+        }
 
-        case 104:
+        break;
+
+    case 101:
+        //            test of RA
+        DBG(OUTPUT, "Start key generation\n");
+        // SOCKET: connect to server
+        if (client.client("127.0.0.1", pkg_port) != 0)
+        {
+            DBG(OUTPUT, "Connect Server Error, Exit!\n");
+            ret = -1;
+            goto CLEANUP;
+        }
+
+        sum = 0;
+        for (int i = 0; i < 100; ++i)
+        {
+            start = clock();
+            if (remote_attestation(enclave_id, client) != SGX_SUCCESS)
+            {
+                DBG(OUTPUT, "Remote Attestation Error, Exit!\n");
+                ret = -1;
+                goto CLEANUP;
+            }
+            end = clock();
+            ts[i] = end - start;
+            sum += ts[i];
+        }
+        printf("ra time(ms): %lf\n", double(sum) / CLOCKS_PER_SEC * 10);
+        for (int i = 0; i < 100; ++i)
+        {
+            printf("%ld\n", ts[i]);
+        }
+        aibeAlgo.mpk_load();
+        DBG(OUTPUT, "Client: setup finished");
+        ////    aibe: keygen
+        if (client_keygen(aibeAlgo.idsn(), aibeAlgo, enclave_id, OUTPUT, client, sum_pkg))
+        {
+            DBG(stderr, "Key verify failed\n");
+            goto CLEANUP;
+        }
+        aibeAlgo.dk_store();
+        DBG(OUTPUT, "A-IBE Success Keygen \n");
+
+        break;
+    case 102:
+        //            test of aes
+
+        enclave_use(enclave_id);
+        sum = 0;
+        for (int i = 0; i < 100; ++i)
+        {
+            busy_retry_time = 4;
+            start = clock();
+            do
+            {
+                ret = enclave_encrypt(
+                    enclave_id,
+                    &status,
+                    data,
+                    data_len,
+                    output,
+                    mac);
+            } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
+
+            if (ret != SGX_SUCCESS)
+            {
+                DBG(OUTPUT, "102 error");
+                goto CLEANUP;
+            }
+
+            end = clock();
+            ts[i] = end - start;
+            sum += ts[i];
+        }
+        printf("SE Encrypt Time(μs): %lf\n", double(sum) / 100);
+        for (int i = 0; i < 100; ++i)
+        {
+            printf("%d\n", (int)ts[i]);
+        }
+
+        sum = 0;
+        for (int i = 0; i < 100; ++i)
+        {
+            busy_retry_time = 4;
+            start = clock();
+            do
+            {
+                ret = enclave_encrypt(
+                    enclave_id,
+                    &status,
+                    output,
+                    data_len,
+                    data,
+                    mac);
+            } while (SGX_ERROR_BUSY == ret && busy_retry_time--);
+
+            if (ret != SGX_SUCCESS)
+            {
+                DBG(OUTPUT, "102 error");
+                goto CLEANUP;
+            }
+
+            end = clock();
+            ts[i] = end - start;
+            sum += ts[i];
+        }
+        printf("SE Decrypt Time(μs): %lf\n", double(sum) / 100);
+        for (int i = 0; i < 100; ++i)
+        {
+            printf("%d\n", (int)ts[i]);
+        }
+        break;
+
+    case 103:
+        enclave_use(enclave_id);
+
+        sum = 0;
+        for (int i = 0; i < 100; ++i)
+        {
+            start = clock();
+
+            ret = enclave_ecc_init(enclave_id,
+                                   &status,
+                                   &ecc_pri,
+                                   &ecc_pub,
+                                   &ecc_handle);
+
+            if (ret != SGX_SUCCESS && status != SGX_SUCCESS)
+            {
+                DBG(OUTPUT, "103 error");
+                goto CLEANUP;
+            }
+            end = clock();
+            ts[i] = end - start;
+            sum += ts[i];
+        }
+        printf("ECDSA Kgen Time(μs): %lf\n", double(sum) / 100);
+        for (int i = 0; i < 100; ++i)
+        {
+            printf("%d\n", (int)ts[i]);
+        }
+
+        sum = 0;
+        for (int i = 0; i < 100; ++i)
+        {
+            start = clock();
+
+            ret = enclave_ecc_sign(enclave_id,
+                                   &status,
+                                   data,
+                                   data_len,
+                                   &ecc_pri,
+                                   &ecc_sig,
+                                   (uint8_t *)&ecc_handle);
+
+            if (ret != SGX_SUCCESS)
+            {
+                DBG(OUTPUT, "103 error");
+                goto CLEANUP;
+            }
+            end = clock();
+            ts[i] = end - start;
+            sum += ts[i];
+        }
+        printf("ECDSA Sign Time(μs): %lf\n", double(sum) / 100);
+        for (int i = 0; i < 100; ++i)
+        {
+            printf("%d\n", (int)ts[i]);
+        }
+
+        sum = 0;
+        for (int i = 0; i < 100; ++i)
+        {
+            start = clock();
+
+            ret = enclave_ecc_verify(enclave_id,
+                                     &status,
+                                     data,
+                                     data_len,
+                                     &ecc_pub,
+                                     &ecc_sig,
+                                     &result,
+                                     (uint8_t *)&ecc_handle);
+
+            if (ret != SGX_SUCCESS)
+            {
+                DBG(OUTPUT, "103 error");
+                goto CLEANUP;
+            }
+
+            end = clock();
+            ts[i] = end - start;
+            sum += ts[i];
+        }
+        printf("ECDSA Verify Time(μs): %lf\n", double(sum) / 100);
+        for (int i = 0; i < 100; ++i)
+        {
+            printf("%d\n", (int)ts[i]);
+        }
+
+        break;
+
+    case 104:
+
+        enclave_ecc_init(enclave_id,
+                         &status,
+                         &ecc_pri,
+                         &ecc_pub,
+                         &ecc_handle);
+
+        sum = 0;
+
+        enclave_use(enclave_id);
+
+        for (int i = 0; i < 100; ++i)
+        {
+            start = clock();
 
             enclave_ecc_init(enclave_id,
                              &status,
@@ -893,89 +937,80 @@ int main(int argc, char *argv[]) {
                              &ecc_pub,
                              &ecc_handle);
 
-            sum = 0;
+            end = clock();
+            ts[i] = double(end - start);
+            sum += ts[i];
+        }
+        printf("ECC KGen Time(μs): %lf\n", double(sum) / 100);
+        for (int i = 0; i < 100; ++i)
+        {
+            printf("%d\n", (int)ts[i]);
+        }
 
-            enclave_use(enclave_id);
+        for (int i = 0; i < 100; ++i)
+        {
+            start = clock();
 
+            ret = enclave_ecc_sign(enclave_id,
+                                   &status,
+                                   data,
+                                   data_len,
+                                   &ecc_pri,
+                                   &ecc_sig,
+                                   (uint8_t *)&ecc_handle);
 
-            for (int i = 0; i < 100; ++i) {
-                start = clock();
-
-                enclave_ecc_init(enclave_id,
-                                 &status,
-                                 &ecc_pri,
-                                 &ecc_pub,
-                                 &ecc_handle);
-
-
-                end = clock();
-                ts[i] = double(end - start);
-                sum += ts[i];
+            if (ret != SGX_SUCCESS)
+            {
+                DBG(OUTPUT, "104 error");
+                goto CLEANUP;
             }
-            printf("ECC KGen Time(μs): %lf\n", double(sum) / 100);
-            for (int i = 0; i < 100; ++i) {
-                printf("%d\n", (int) ts[i]);
-            }
+            end = clock();
+            ts[i] = double(end - start);
+            sum += ts[i];
+        }
+        printf("ECC Decrypt Time(μs): %lf\n", double(sum) / 100);
+        for (int i = 0; i < 100; ++i)
+        {
+            printf("%d\n", (int)ts[i]);
+        }
 
-            for (int i = 0; i < 100; ++i) {
-                start = clock();
+        sum = 0;
+        for (int i = 0; i < 100; ++i)
+        {
+            start = clock();
 
-                ret = enclave_ecc_sign(enclave_id,
-                                       &status,
-                                       data,
-                                       data_len,
-                                       &ecc_pri,
-                                       &ecc_sig,
-                                       (uint8_t *) &ecc_handle);
+            ret = enclave_ecc_verify(enclave_id,
+                                     &status,
+                                     data,
+                                     data_len,
+                                     &ecc_pub,
+                                     &ecc_sig,
+                                     &result,
+                                     (uint8_t *)&ecc_handle);
 
-                if (ret != SGX_SUCCESS) {
-                    DBG(OUTPUT, "104 error");
-                    goto CLEANUP;
-                }
-                end = clock();
-                ts[i] = double(end - start);
-                sum += ts[i];
-            }
-            printf("ECC Decrypt Time(μs): %lf\n", double(sum) / 100);
-            for (int i = 0; i < 100; ++i) {
-                printf("%d\n", (int) ts[i]);
-            }
-
-            sum = 0;
-            for (int i = 0; i < 100; ++i) {
-                start = clock();
-
-                ret = enclave_ecc_verify(enclave_id,
-                                         &status,
-                                         data,
-                                         data_len,
-                                         &ecc_pub,
-                                         &ecc_sig,
-                                         &result,
-                                         (uint8_t *) &ecc_handle);
-
-                if (ret != SGX_SUCCESS) {
-                    DBG(OUTPUT, "104 error");
-                    goto CLEANUP;
-                }
-
-                end = clock();
-                ts[i] = double(end - start);
-                sum += ts[i];
-            }
-            printf("ECC Encrypt Time(μs): %lf\n", double(sum) / 100);
-            for (int i = 0; i < 100; ++i) {
-                printf("%d\n", (int) ts[i]);
+            if (ret != SGX_SUCCESS)
+            {
+                DBG(OUTPUT, "104 error");
+                goto CLEANUP;
             }
 
-            break;
-        default:
-            printf("Invalid function number, exit\n");
-            goto CLEANUP;
+            end = clock();
+            ts[i] = double(end - start);
+            sum += ts[i];
+        }
+        printf("ECC Encrypt Time(μs): %lf\n", double(sum) / 100);
+        for (int i = 0; i < 100; ++i)
+        {
+            printf("%d\n", (int)ts[i]);
+        }
+
+        break;
+    default:
+        printf("Invalid function number, exit\n");
+        goto CLEANUP;
     }
 
-
-    CLEANUP:
+CLEANUP:
     terminate(client);
     client.Cleanupsocket();
     sgx_destroy_enclave(enclave_id);

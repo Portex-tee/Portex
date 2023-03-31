@@ -30,3 +30,16 @@
 *.exe
 *.out
 *.app
+.idea/workspace.xml
+client/.idea/workspace.xml
+client/.idea/shelf/Uncommitted_changes_before_Checkout_at_2022_4_5_9_56__Default_Changelist_.xml
+client/.idea/shelf/Uncommitted_changes_before_Checkout_at_2022_4_5_下午9_56_[Default_Changelist]/shelved.patch
+client/.idea/shelf/Uncommitted_changes_before_Checkout_at_2022_4_5_下午9_56_[Default_Changelist]1/shelved.patch
+LM/.idea/workspace.xml
+LM/.idea/shelf/Uncommitted_changes_before_Checkout_at_2022_4_5_9_56__Default_Changelist_.xml
+LM/.idea/shelf/Uncommitted_changes_before_Checkout_at_2022_4_5_下午9_56_[Default_Changelist]/shelved.patch
+LM/.idea/shelf/Uncommitted_changes_before_Checkout_at_2022_4_5_下午9_56_[Default_Changelist]1/shelved.patch
+pkg/.idea/workspace.xml
+client/.idea/shelf/*
+LM/.idea/shelf/*
+.gitignore

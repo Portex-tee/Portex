@@ -121,6 +121,8 @@ public:
 
     void init();
 
+    void set_SN();
+
     void set_Hz(int id);
 
     void keygen1(int id);
@@ -307,6 +309,12 @@ void AibeAlgo::init() {
     element_init_G1(tg, pairing);
     element_init_GT(te, pairing);
 
+}
+
+// random generate an integer for this.sn
+void AibeAlgo::set_SN()
+{
+    sn = rand() % 100000000;
 }
 
 void AibeAlgo::pkg_setup_generate(const char *pk_path, const char *sk_path) {
