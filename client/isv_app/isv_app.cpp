@@ -514,6 +514,53 @@ int main(int argc, char *argv[])
         DBG(OUTPUT, "Call sgx_create_enclave success.\n");
     }
 
+    // drogon add handler
+    app().registerHandler(
+        "/",
+        [](const HttpRequestPtr &,
+           std::function<void(const HttpResponsePtr &)> &&callback) {
+            auto resp = HttpResponse::newHttpViewResponse("ClientView");
+            callback(resp);
+        });
+
+    // drogon add encrypt handler, the parameter contains an integer id and a message. The response is a string that dumped from a json structure
+    app().registerHandler("/encrypt?id={user-id}&message={message}", [&](const HttpRequestPtr &req,
+                                       std::function<void(const HttpResponsePtr &)> &&callback,
+                                       const int &id,
+                                       const std::string &message)
+                          {
+        auto resp = HttpResponse::newHttpResponse();
+        std::string resp_str;
+        resp_str += "Hello, " + std::to_string(id) + "!\n";
+        resp_str += "Message: " + message + "\n";
+        
+        aibeAlgo.mpk_load();
+        aibeAlgo.id = id;
+        aibeAlgo.set_SN();
+
+        LOG_INFO << "Message:\n" << message;
+
+        ct_size = aibeAlgo.encrypt(ct_buf, message.c_str(), aibeAlgo.idsn());
+
+        ct = std::vector<uint8_t>(ct_buf, ct_buf + ct_size);
+        j = json{
+            {"ct", ct},
+            {"sn", aibeAlgo.sn},
+            {"id", aibeAlgo.id}
+            };
+
+        // std::ofstream(ct_path) << j;
+        LOG_INFO << j.dump();
+        resp_str += j.dump();
+
+        resp->setBody(resp_str);
+        callback(resp); 
+        },
+        {Get});
+
+
+    LOG_INFO << "Server running on 127.0.0.1:8848";
+    app().addListener("127.0.0.1", 8848).run();
 
     printf("Please choose a function:\n"
            "1) encrypt\n"

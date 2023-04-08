@@ -83,7 +83,7 @@ else
 	Urts_Library_Name := sgx_urts
 endif
 
-App_Cpp_Files := isv_app/isv_app.cpp isv_app/HelloController.cc isv_app/HelloViewController.cc
+App_Cpp_Files := isv_app/isv_app.cpp isv_app/ClientView.cpp
 App_Include_Paths := -Iservice_provider -I$(SGX_SDK)/include -I$(IPP_LIBRARY)/include
 
 App_C_Flags := $(SGX_COMMON_CFLAGS) -fPIC -Wno-attributes $(App_Include_Paths)
@@ -100,7 +100,7 @@ else
         App_C_Flags += -DNDEBUG -UEDEBUG -UDEBUG
 endif
 
-App_Cpp_Flags := $(App_C_Flags) -std=c++11
+App_Cpp_Flags := $(App_C_Flags) -std=c++14
 App_Link_Flags := $(SGX_COMMON_CFLAGS) \
 	-L$(IPP_LIBRARY_PATH) \
 	-L$(SGX_LIBRARY_PATH) -l$(Urts_Library_Name) \
@@ -126,7 +126,7 @@ ServiceProvider_Cpp_Files := service_provider/ecp.cpp service_provider/network_r
 ServiceProvider_Include_Paths := -I$(SGX_SDK)/include -I$(SGX_SDK)/include/tlibc -I$(SGX_SDK)/include/libcxx -Isample_libcrypto
 
 ServiceProvider_C_Flags := $(SGX_COMMON_CFLAGS) -fPIC -Wno-attributes -I$(SGX_SDK)/include -Isample_libcrypto
-ServiceProvider_Cpp_Flags := $(ServiceProvider_C_Flags) -std=c++11
+ServiceProvider_Cpp_Flags := $(ServiceProvider_C_Flags) -std=c++14
 ServiceProvider_Link_Flags :=  -shared $(SGX_COMMON_CFLAGS) -L$(SGX_LIBRARY_PATH) -lsample_libcrypto -Lsample_libcrypto -Lcrypto
 
 ServiceProvider_Cpp_Objects := $(ServiceProvider_Cpp_Files:.cpp=.o)
@@ -153,7 +153,7 @@ else
 	Enclave_C_Flags := $(SGX_COMMON_CFLAGS) -nostdinc -fvisibility=hidden -fpie -ffunction-sections -fdata-sections -fstack-protector-strong
 endif
 Enclave_C_Flags += $(Enclave_Include_Paths)
-Enclave_Cpp_Flags := $(Enclave_C_Flags) -std=c++11 -nostdinc++
+Enclave_Cpp_Flags := $(Enclave_C_Flags) -std=c++14 -nostdinc++
 
 # To generate a proper enclave, it is recommended to follow below guideline to link the trusted libraries:
 #    1. Link sgx_trts with the `--whole-archive' and `--no-whole-archive' options,
@@ -286,4 +286,4 @@ $(Signed_Enclave_Name): $(Enclave_Name)
 .PHONY: clean
 
 clean:
-	@rm -f .config_* $(App_Name) $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) isv_app/isv_enclave_u.* $(Enclave_Cpp_Objects) isv_enclave/isv_enclave_t.* libservice_provider.* $(ServiceProvider_Cpp_Objects)
+	@rm -f .config_* $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) isv_app/isv_enclave_u.* $(Enclave_Cpp_Objects) isv_enclave/isv_enclave_t.* libservice_provider.* $(ServiceProvider_Cpp_Objects)
