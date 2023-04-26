@@ -174,15 +174,15 @@ https://templatemo.com/tm-543-breezed
                         </div>
                         <div class="col-lg-12">
                             <fieldset>
-                                        <textarea name="message" rows="6" id="message" placeholder="Message"
-                                                  required=""></textarea>
+                                    <textarea name="message" rows="6" id="message" placeholder="Message"
+                                              required=""></textarea>
                             </fieldset>
                         </div>
 
                         <div class="col-lg-12">
                             <fieldset>
-                                        <textarea name="ciphertext" rows="6" id="ciphertext" placeholder="Ciphertext"
-                                                  required="" readonly></textarea>
+                                    <textarea name="ciphertext" rows="6" id="ciphertext" placeholder="Ciphertext"
+                                              required="" readonly></textarea>
                             </fieldset>
                         </div>
 
@@ -214,22 +214,26 @@ https://templatemo.com/tm-543-breezed
                     <p>Vivamus suscipit blandit nibh, in cursus mi. Proin vel blandit metus, et auctor elit. Vivamus
                         tincidunt tristique convallis. Ut nec odio vel arcu euismod semper nec ac sem.</p>
                     <div class="subscribe-form">
-                        <form id="subscribe-now" action="" method="get">
-                            <div class="row">
-                                <div class="col-md-8 col-sm-12">
-                                    <fieldset>
-                                        <input name="email" type="text" id="email" placeholder="Enter your email..."
-                                               required="">
-                                    </fieldset>
-                                </div>
-                                <div class="col-md-4 col-sm-12">
-                                    <fieldset>
-                                        <button type="submit" id="form-submit" class="main-button">Subscribe
-                                            Now</button>
-                                    </fieldset>
-                                </div>
+                        <div class="row">
+                            <div class="col-md-8 col-sm-12">
+                                <fieldset>
+                                    <input name="dec-ciphertext" type="text" id="dec-ciphertext" placeholder="Enter your ciphertext..."
+                                           required="">
+                                </fieldset>
                             </div>
-                        </form>
+                            <div class="col-md-4 col-sm-12">
+                                <fieldset>
+                                    <button onclick="decrypt()" class="main-button">Decrypt
+                                        Now</button>
+                                </fieldset>
+                            </div>
+                            <div class="col-lg-12">
+                                <fieldset>
+                                    <input name="dec-plaintext" type="text"  id="dec-plaintext" placeholder="Message"
+                                           required="" readonly></input>
+                                </fieldset>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

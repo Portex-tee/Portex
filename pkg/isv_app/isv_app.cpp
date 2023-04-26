@@ -575,7 +575,7 @@ int main(int argc, char *argv[]) {
     }
 
 
-    if (0)
+    if (1)
     {
         std::cout << "Generated pkg (vk, sk)" << std::endl;
         ecdsa_kgen("../client/param/pkg-verify.pem", "param/pkg-sign.pem");
