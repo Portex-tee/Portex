@@ -533,7 +533,7 @@ int main(int argc, char *argv[])
         std::string resp_str;
         resp_str += "Hello, " + std::to_string(id) + "!\n";
         resp_str += "Message: " + message + "\n";
-        
+
         aibeAlgo.mpk_load();
         aibeAlgo.id = id;
         aibeAlgo.set_SN();
@@ -550,17 +550,21 @@ int main(int argc, char *argv[])
             };
 
         // std::ofstream(ct_path) << j;
-        LOG_INFO << j.dump();
+//        LOG_INFO << j.dump();
         resp_str += j.dump();
 
         resp->setBody(resp_str);
-        callback(resp); 
-        },
-        {Get});
+        callback(resp);
+        });
 
 
     LOG_INFO << "Server running on 127.0.0.1:8848";
-    app().addListener("127.0.0.1", 8848).run();
+    try {
+        app().addListener("127.0.0.1", 8848).run();
+    } catch (const std::exception &e) {
+        LOG_ERROR << e.what();
+    }
+
 
     printf("Please choose a function:\n"
            "1) encrypt\n"
