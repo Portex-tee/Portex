@@ -1075,7 +1075,7 @@ subscribe
   margin-bottom: 40px;
 }
 
-#subscribe input {
+#subscribe input, textarea {
   width: 100%;
   height: 38px;
   border-radius: 19px;
@@ -1085,6 +1085,20 @@ subscribe
   font-size: 13px;
   color: #fff;
   outline: none;
+}
+
+.subscribe-form textarea {
+  font-size: 15px;
+  height: 50px;
+  border: 1px solid #ddd;
+  outline: none;
+  padding-top: 5px;
+  padding-left: 20px;
+  padding-right: 20px;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  margin-top: 20px;
 }
 
 .subscribe-form ::-webkit-input-placeholder { /* Edge */

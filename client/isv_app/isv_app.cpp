@@ -398,8 +398,12 @@ int main(int argc, char *argv[]) {
             "/",
             [](const HttpRequestPtr &,
                std::function<void(const HttpResponsePtr &)> &&callback) {
+
+//                auto resp = HttpResponse::newHttpResponse();
+//                resp->setBody("Hello, World!");
                 auto resp = HttpResponse::newHttpViewResponse("ClientView");
                 callback(resp);
+//                LOG_INFO << "HERE!!";
             });
 
     // drogon add encrypt handler, the parameter contains an integer id and a message. The response is a string that dumped from a json structure
@@ -484,7 +488,8 @@ int main(int argc, char *argv[]) {
 
     LOG_INFO << "Server running on 127.0.0.1:8848";
     try {
-        app().addListener("127.0.0.1", 8848).run();
+//        app().addListener("127.0.0.1", 8848).run();
+        app().addListener("2001:da8:201d:1107::8622", 8848).run();
     } catch (const std::exception &e) {
         LOG_ERROR << e.what();
     }
