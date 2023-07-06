@@ -83,7 +83,7 @@
 // messages and the information flow.
 #include "sample_messages.h"
 
-#define ENCLAVE_PATH "isv_enclave.signed.so"
+#define ENCLAVE_PATH "enclave.signed.so"
 
 using json = nlohmann::json;
 extern char sendbuf[BUFSIZ]; //数据传送的缓冲区
@@ -290,6 +290,7 @@ int main(int argc, char *argv[]) {
                                  &launch_token_update,
                                  &enclave_id, NULL);
         if (SGX_SUCCESS != ret) {
+            std::cout << std::hex << ret << std::endl;
             ret = -1;
             fprintf(OUTPUT, "Error, call sgx_create_enclave fail [%s].\n",
                     __FUNCTION__);

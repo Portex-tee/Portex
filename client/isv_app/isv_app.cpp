@@ -486,7 +486,7 @@ int main(int argc, char *argv[]) {
     });
 
 
-    LOG_INFO << "Server running on 127.0.0.1:8848";
+    LOG_INFO << "Server running on [2001:da8:201d:1107::8622]:8848";
     try {
 //        app().addListener("127.0.0.1", 8848).run();
         app().addListener("2001:da8:201d:1107::8622", 8848).run();
