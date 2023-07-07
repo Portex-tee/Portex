@@ -19,7 +19,6 @@ find_package(Drogon CONFIG REQUIRED)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 
-
 include_directories(${SGX_INCLUDE_DIR} service_provider sample_libcrypto isv_app isv_enclave)
 
 set(EDL_SEARCH_PATHS isv_enclave)
@@ -37,14 +36,14 @@ file(GLOB LIB_SAMP sample_libcrypto/libsample_libcrypto.so)
 #add_trusted_library(LocalAttestationLib SRCS "${T_SRCS}" EDL LocalAttestationCode/LocalAttestationCode.edl EDL_SEARCH_PATHS ${EDL_SEARCH_PATHS})
 
 #add_trusted_library(trusted_lib SRCS ${T_SRCS} EDL isv_enclave/isv_enclave.edl EDL_SEARCH_PATHS ${EDL_SEARCH_PATHS})
-add_enclave_library(enclave SRCS ${E_SRCS} EDL isv_enclave/isv_enclave.edl EDL_SEARCH_PATHS ${EDL_SEARCH_PATHS} LDSCRIPT ${LDS})
+add_enclave_library(enclave SRCS ${E_SRCS} EDL isv_enclave/isv_enclave.edl EDL_SEARCH_PATHS ${EDL_SEARCH_PATHS} LDSCRIPT ${LDS} USE_SGXSSL 1)
 enclave_sign(enclave KEY isv_enclave/isv_enclave_private.pem CONFIG isv_enclave/isv_enclave.config.xml)
 
 set(SRCS isv_app/isv_app.cpp)
 add_untrusted_executable(${PROJECT_NAME} SRCS ${SRCS} EDL isv_enclave/isv_enclave.edl EDL_SEARCH_PATHS ${EDL_SEARCH_PATHS})
 add_dependencies(${PROJECT_NAME} enclave-sign)
 
-target_link_libraries(${PROJECT_NAME} -lcryptopp -lpbc -lgmp -lssl -lcrypto service_provider -lpthread -lm -lc -lstdc++ ${LIB_SAMP})
+target_link_libraries(${PROJECT_NAME} -lcryptopp -lpbc -lgmp service_provider -lm -lc -lstdc++ ${LIB_SAMP})
 
 # ##############################################################################
 # If you include the drogon source code locally in your project, use this method
@@ -67,23 +66,22 @@ aux_source_directory(plugins PLUGIN_SRC)
 aux_source_directory(models MODEL_SRC)
 
 drogon_create_views(${PROJECT_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/views
-                    ${CMAKE_CURRENT_BINARY_DIR})
+        ${CMAKE_CURRENT_BINARY_DIR})
 
 
 target_include_directories(${PROJECT_NAME}
-                           PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
-                                   ${CMAKE_CURRENT_SOURCE_DIR}/models)
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/models)
 target_sources(${PROJECT_NAME}
-               PRIVATE
-               ${SRC_DIR}
-               ${CTL_SRC}
-               ${FILTER_SRC}
-               ${PLUGIN_SRC}
-               ${MODEL_SRC})
+        PRIVATE
+        ${SRC_DIR}
+        ${CTL_SRC}
+        ${FILTER_SRC}
+        ${PLUGIN_SRC}
+        ${MODEL_SRC})
 # ##############################################################################
 # uncomment the following line for dynamically loading views
 # set_property(TARGET ${PROJECT_NAME} PROPERTY ENABLE_EXPORTS ON)
 
 # ##############################################################################
 
-add_subdirectory(test)

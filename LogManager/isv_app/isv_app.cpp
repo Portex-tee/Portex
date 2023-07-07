@@ -38,6 +38,7 @@
 #include <limits.h>
 #include <unistd.h>
 #include <json.hpp>
+#include <drogon/HttpAppFramework.h>
 #include "ec_crypto.h"
 
 // Needed for definition of remote attestation messages.
@@ -259,6 +260,10 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
 }
 
 int main(int argc, char *argv[]) {
+
+    drogon::app().loadConfigFile("./config.json");
+    drogon::app().run();
+
     int ret = 0;
     sgx_enclave_id_t enclave_id = 0;
     FILE *OUTPUT = stdout;
