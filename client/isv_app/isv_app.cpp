@@ -42,6 +42,7 @@
 #include <json.hpp>
 #include "ec_crypto.h"
 #include <drogon/drogon.h>
+#include "hv/hv.h"
 
 // Needed for definition of remote attestation messages.
 #include "remote_attestation_result.h"
@@ -85,7 +86,7 @@
 // messages and the information flow.
 #include "sample_messages.h"
 
-#define ENCLAVE_PATH "isv_enclave.signed.so"
+#define ENCLAVE_PATH "enclave.signed.so"
 
 // 1--open   0--close
 #define test_enable (1)
@@ -368,7 +369,7 @@ int main(int argc, char *argv[]) {
         DBG(stderr, "Param File Path error\n");
         exit(-1);
     }
-    //    printf("%d, %d, %d\n", aibeAlgo.size_GT, aibeAlgo.size_comp_G1, aibeAlgo.size_Zr);
+//    printf("%d, %d, %d\n", aibeAlgo.size_GT, aibeAlgo.size_comp_G1, aibeAlgo.size_Zr);
     uint8_t ct_buf[aibeAlgo.size_ct + 10];
     uint8_t msg_buf[aibeAlgo.size_ct + 10];
     std::vector<uint8_t> ct;
@@ -489,7 +490,8 @@ int main(int argc, char *argv[]) {
     LOG_INFO << "Server running on [2001:da8:201d:1107::8622]:8848";
     try {
 //        app().addListener("127.0.0.1", 8848).run();
-        app().addListener("2001:da8:201d:1107::8622", 8848).run();
+        drogon::app().loadConfigFile("./config.json");
+        drogon::app().run();
     } catch (const std::exception &e) {
         LOG_ERROR << e.what();
     }

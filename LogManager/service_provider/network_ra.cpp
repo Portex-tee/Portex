@@ -125,14 +125,18 @@ void ra_free_network_response_buffer(ra_samp_response_header_t *resp) {
 
 int NetworkClient::client(const char *ip, int port) {
     int len;
-    struct sockaddr_in remote_addr; //服务器端网络地址结构体
+    struct sockaddr_in6 remote_addr; //服务器端网络地址结构体
     memset(&remote_addr, 0, sizeof(remote_addr)); //数据初始化--清零
-    remote_addr.sin_family = AF_INET; //设置为IP通信
-    remote_addr.sin_addr.s_addr = inet_addr(ip);//服务器IP地址
-    remote_addr.sin_port = htons(port); //服务器端口号
+    remote_addr.sin6_family = AF_INET6; //设置为IP通信
+    int ret = inet_pton(AF_INET6, ip, &remote_addr.sin6_addr);//服务器IP地址
+    if (ret == 0) {
+        perror("ip error");
+        return 1;
+    }
+    remote_addr.sin6_port = htons(port); //服务器端口号
 
     /*创建客户端套接字--IPv4协议，面向连接通信，TCP协议*/
-    if ((client_sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    if ((client_sockfd = socket(AF_INET6, SOCK_STREAM, 0)) < 0) {
         perror("socket");
         return 1;
     }
@@ -171,12 +175,12 @@ int NetworkServer::server(int port) {
     sin_size = sizeof(struct sockaddr_in);
 
     memset(&my_addr, 0, sizeof(my_addr)); //数据初始化--清零
-    my_addr.sin_family = AF_INET; //设置为IP通信
-    my_addr.sin_addr.s_addr = INADDR_ANY;//服务器IP地址--允许连接到所有本地地址上
-    my_addr.sin_port = htons(port); //服务器端口号
+    my_addr.sin6_family = AF_INET6; //设置为IP通信
+    my_addr.sin6_addr = IN6ADDR_ANY_INIT;//服务器IP地址--允许连接到所有本地地址上
+    my_addr.sin6_port = htons(port); //服务器端口号
 
     /*创建服务器端套接字--IPv4协议，面向连接通信，TCP协议*/
-    if ((sockfd = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
+    if ((sockfd = socket(PF_INET6, SOCK_STREAM, 0)) < 0) {
         perror("socket");
         return 1;
     }

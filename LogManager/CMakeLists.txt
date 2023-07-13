@@ -27,6 +27,9 @@ set(LDS isv_enclave/isv_enclave.lds)
 
 set(E_SRCS isv_enclave/isv_enclave.cpp)
 
+# libs
+set(PROJ_LIBS -lcryptopp -lpbc -lgmp service_provider -lm -lc -lstdc++ -lhv)
+
 file(GLOB U_SRCS service_provider/*.cpp)
 add_library(service_provider STATIC ${U_SRCS})
 
@@ -43,7 +46,7 @@ set(SRCS isv_app/isv_app.cpp)
 add_untrusted_executable(${PROJECT_NAME} SRCS ${SRCS} EDL isv_enclave/isv_enclave.edl EDL_SEARCH_PATHS ${EDL_SEARCH_PATHS})
 add_dependencies(${PROJECT_NAME} enclave-sign)
 
-target_link_libraries(${PROJECT_NAME} -lcryptopp -lpbc -lgmp service_provider -lm -lc -lstdc++ ${LIB_SAMP})
+target_link_libraries(${PROJECT_NAME} ${PROJ_LIBS} ${LIB_SAMP})
 
 # ##############################################################################
 # If you include the drogon source code locally in your project, use this method
@@ -85,3 +88,10 @@ target_sources(${PROJECT_NAME}
 
 # ##############################################################################
 
+
+add_subdirectory(test)
+
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/param DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/)
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/config.json DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/)
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/assets DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/)
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/index.html DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/)

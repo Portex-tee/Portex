@@ -261,8 +261,8 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
 
 int main(int argc, char *argv[]) {
 
-    drogon::app().loadConfigFile("./config.json");
-    drogon::app().run();
+//    drogon::app().loadConfigFile("./config.json");
+//    drogon::app().run();
 
     int ret = 0;
     sgx_enclave_id_t enclave_id = 0;
@@ -280,9 +280,10 @@ int main(int argc, char *argv[]) {
     std::string encodedHexStr;
     std::string srcStr;
 
+    // todo: remove in release
     if( 1 ) {
         std::cout << "Generate LM signing key pair (vk, sk)" << std::endl;
-        ecdsa_kgen("../pkg/param/lm-verify.pem", "param/lm-sign.pem");
+        ecdsa_kgen("../../pkg/param/lm-verify.pem", "param/lm-sign.pem");
     }
 
     int launch_token_update = 0;
