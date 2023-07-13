@@ -130,7 +130,7 @@ int NetworkClient::client(const char *ip, int port) {
     remote_addr.sin6_family = AF_INET6; //设置为IP通信
     int ret = inet_pton(AF_INET6, ip, &remote_addr.sin6_addr);//服务器IP地址
     if (ret == 0) {
-        perror("ip error");
+        perror("ip error\n");
         return 1;
     }
     remote_addr.sin6_port = htons(port); //服务器端口号
@@ -142,7 +142,7 @@ int NetworkClient::client(const char *ip, int port) {
     }
 
     /*将套接字绑定到服务器的网络地址上*/
-    if (connect(client_sockfd, (struct sockaddr *) &remote_addr, sizeof(struct sockaddr)) < 0) {
+    if (connect(client_sockfd, (struct sockaddr *) &remote_addr, sizeof(remote_addr)) < 0) {
         perror("connect");
         return 1;
     }
@@ -176,7 +176,7 @@ int NetworkServer::server(int port) {
 
     memset(&my_addr, 0, sizeof(my_addr)); //数据初始化--清零
     my_addr.sin6_family = AF_INET6; //设置为IP通信
-    my_addr.sin6_addr = IN6ADDR_ANY_INIT;//服务器IP地址--允许连接到所有本地地址上
+    my_addr.sin6_addr = in6addr_any;//服务器IP地址--允许连接到所有本地地址上
     my_addr.sin6_port = htons(port); //服务器端口号
 
     /*创建服务器端套接字--IPv4协议，面向连接通信，TCP协议*/
@@ -189,7 +189,7 @@ int NetworkServer::server(int port) {
     setsockopt(sockfd,SOL_SOCKET,SO_REUSEADDR,&j,sizeof(j));
 
     /*将套接字绑定到服务器的网络地址上*/
-    if (bind(sockfd, (struct sockaddr *) &my_addr, sizeof(struct sockaddr)) < 0) {
+    if (bind(sockfd, (struct sockaddr *) &my_addr, sizeof(my_addr)) < 0) {
         perror("bind");
         return 1;
     }

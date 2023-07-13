@@ -454,7 +454,7 @@ int main(int argc, char *argv[]) {
         int ret = 0;
 
 
-        if (client.client("127.0.0.1", lm_port) != 0) {
+        if (client.client("2001:da8:201d:1107::8622", lm_port) != 0) {
             resp_str = "Connect Server Error!";
             ret = -1;
         }
@@ -554,7 +554,7 @@ int main(int argc, char *argv[]) {
             for (int i = 0; i < loops; ++i) {
                 start = clock();
 
-                if (client.client("127.0.0.1", lm_port) != 0) {
+                if (client.client("2001:da8:201d:1107::8622", lm_port) != 0) {
                     DBG(OUTPUT, "Connect Server Error, Exit!\n");
                     ret = -1;
                     goto CLEANUP;

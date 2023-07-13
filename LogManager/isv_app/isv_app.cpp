@@ -328,7 +328,7 @@ int main(int argc, char *argv[]) {
                         fprintf(OUTPUT, "LM key request\n");
 
                         // SOCKET: connect to server
-                        if (client.client("127.0.0.1", 12333) != 0) {
+                        if (client.client("2001:da8:201d:1107::8622", 12333) != 0) {
                             fprintf(OUTPUT, "Connect Server Error, Exit!\n");
                             ret = -1;
                             goto CLEANUP;
