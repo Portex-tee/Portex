@@ -84,9 +84,12 @@
 // messages and the information flow.
 #include "sample_messages.h"
 
-#define ENCLAVE_PATH "enclave.signed.so"
+#define ENCLAVE_PATH "build/enclave.signed.so"
 
 using json = nlohmann::json;
+using namespace drogon;
+
+LogTree logTree;
 extern char sendbuf[BUFSIZ]; //数据传送的缓冲区
 extern char recvbuf[BUFSIZ];
 
@@ -99,7 +102,6 @@ extern char recvbuf[BUFSIZ];
 
 int lm_keyreq(const uint8_t *p_msg,
               uint32_t msg_size,
-              LogTree &logTree,
               sgx_enclave_id_t enclave_id,
               FILE *OUTPUT,
               NetworkClient client,
@@ -135,10 +137,10 @@ int lm_keyreq(const uint8_t *p_msg,
     // construct node json
     ts = get_timestamp(tv);
     json j_node{
-            {"id", id},
-            {"sn", sn},
+            {"id",  id},
+            {"sn",  sn},
             {"sig", vec_sig},
-            {"ts", ts}
+            {"ts",  ts}
     };
 
     // MT.Insert
@@ -160,8 +162,8 @@ int lm_keyreq(const uint8_t *p_msg,
     ir = json::to_bjdata(j_req);
     ecdsa_sign(ir, ir_sig, "param/lm-sign.pem");
 
-    json j_body {
-            {"ir", j_req},
+    json j_body{
+            {"ir",     j_req},
             {"ir_sig", ir_sig}
     };
 
@@ -175,7 +177,7 @@ int lm_keyreq(const uint8_t *p_msg,
     p_request->type = TYPE_RA_KEYREQ;
     p_request->size = msg2_size;
 
-    strcpy((char *)p_request->body, str_body.c_str());
+    strcpy((char *) p_request->body, str_body.c_str());
 
     memset(client.sendbuf, 0, BUFSIZ);
     memcpy(client.sendbuf, p_request, sizeof(ra_samp_request_header_t) + msg2_size);
@@ -211,7 +213,6 @@ int lm_keyreq(const uint8_t *p_msg,
 
 int lm_trace(const ra_samp_request_header_t *p_msg,
              uint32_t msg_size,
-             LogTree &logTree,
              sgx_enclave_id_t enclave_id,
              FILE *OUTPUT,
              NetworkServer server) {
@@ -233,7 +234,7 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
     // log trace
     logTree.trace(id, jv);
     fprintf(OUTPUT, "\nID: %d\n", id);
-    for (auto & i : jv) {
+    for (auto &i: jv) {
         std::cout << i.dump() << std::endl;
     }
 
@@ -249,7 +250,7 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
     p_response = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t) + msg2_size);
     p_response->type = TYPE_LM_TRACE;
     p_response->size = msg2_size;
-    strcpy((char *)p_response->body, str_data.c_str());
+    strcpy((char *) p_response->body, str_data.c_str());
     memset(server.sendbuf, 0, BUFSIZ);
     memcpy(server.sendbuf, p_response, sizeof(ra_samp_response_header_t) + p_response->size);
     server.SendTo(sizeof(ra_samp_response_header_t) + p_response->size);
@@ -259,10 +260,55 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
     return ret;
 }
 
+void http_server() {
+    drogon::app().loadConfigFile("./config.json");
+
+    drogon::HttpAppFramework::instance()
+            .registerHandler
+                    ("/",
+                     [=](const drogon::HttpRequestPtr &req,
+                         std::function<void(const drogon::HttpResponsePtr &)> &&callback) {
+
+                         Json::Value ret;
+                         ret["code"] = 0;
+                         ret["msg"] = "ok";
+                         ret["size"] = int(logTree.lexTree.size());
+
+                         Json::Value data;
+
+                         for (auto & it : logTree.lexTree) {
+                             for (auto & it2 : it.second) {
+                                 Json::Reader reader;
+                                 Json::Value item2;
+                                 reader.parse(it2, item2);
+                                 data.append(item2);
+                             }
+                         }
+
+                         ret["data"] = data;
+
+                         auto logList = ret;
+                         if (logList["size"].asInt() > 0) {
+                             for(auto & it : logList["data"]) {
+                                 LOG_INFO << it["id"].asInt() << ' ' << it["sn"].asInt() << ' ' << it["timestamp"].asInt();
+                             }
+                         }
+
+                         drogon::HttpViewData httpViewData;
+                         httpViewData.insert("list", ret);
+                         auto resp = HttpResponse::newHttpViewResponse("LogView.csp", httpViewData);
+                         callback(resp);
+
+                     }
+                    );
+
+//    app().enableDynamicViewsLoading({"views/"});
+
+    drogon::app().run();
+}
+
 int main(int argc, char *argv[]) {
 
-//    drogon::app().loadConfigFile("./config.json");
-//    drogon::app().run();
 
     int ret = 0;
     sgx_enclave_id_t enclave_id = 0;
@@ -270,7 +316,9 @@ int main(int argc, char *argv[]) {
     NetworkClient client;
     NetworkServer server;
     int lm_port = 22333;
-    LogTree logTree;
+    int pkg_port = 12333;
+    std::string pkg_ip = "2001:da8:201d:1107::c622";
+    extern LogTree logTree;
     ra_samp_request_header_t *p_req;
     ra_samp_response_header_t **p_resp;
     ra_samp_response_header_t *p_resp_msg;
@@ -281,10 +329,12 @@ int main(int argc, char *argv[]) {
     std::string srcStr;
 
     // todo: remove in release
-    if( 1 ) {
+    if (0) {
         std::cout << "Generate LM signing key pair (vk, sk)" << std::endl;
-        ecdsa_kgen("../../pkg/param/lm-verify.pem", "param/lm-sign.pem");
+        ecdsa_kgen("../pkg/param/lm-verify.pem", "param/lm-sign.pem");
     }
+
+    std::thread t1(http_server);
 
     int launch_token_update = 0;
     sgx_launch_token_t launch_token = {0};
@@ -304,6 +354,7 @@ int main(int argc, char *argv[]) {
         }
         fprintf(OUTPUT, "Call sgx_create_enclave success.\n");
     }
+
 
     fprintf(OUTPUT, "start socket....\n");
     server.server(lm_port);
@@ -328,7 +379,7 @@ int main(int argc, char *argv[]) {
                         fprintf(OUTPUT, "LM key request\n");
 
                         // SOCKET: connect to server
-                        if (client.client("2001:da8:201d:1107::8622", 12333) != 0) {
+                        if (client.client(pkg_ip.c_str(), pkg_port) != 0) {
                             fprintf(OUTPUT, "Connect Server Error, Exit!\n");
                             ret = -1;
                             goto CLEANUP;
@@ -342,7 +393,6 @@ int main(int argc, char *argv[]) {
 
                         lm_keyreq((uint8_t *) p_req + sizeof(ra_samp_request_header_t),
                                   p_req->size,
-                                  logTree,
                                   enclave_id,
                                   OUTPUT,
                                   client,
@@ -359,7 +409,6 @@ int main(int argc, char *argv[]) {
                         lm_trace((const ra_samp_request_header_t *) ((uint8_t *) p_req +
                                                                      sizeof(ra_samp_request_header_t)),
                                  p_req->size,
-                                 logTree,
                                  enclave_id,
                                  OUTPUT,
                                  server);
@@ -391,6 +440,7 @@ int main(int argc, char *argv[]) {
     //aibe load_param
 
     CLEANUP:
+
     terminate(client);
     client.Cleanupsocket();
     sgx_destroy_enclave(enclave_id);

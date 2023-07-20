@@ -114,8 +114,8 @@ public:
 
 class NetworkServer : public NetworkEnd{
 public:
-    sockaddr_in my_addr;   //服务器网络地址结构体
-    sockaddr_in remote_addr; //客户端网络地址结构体
+    sockaddr_in6 my_addr;   //服务器网络地址结构体
+    sockaddr_in6 remote_addr; //客户端网络地址结构体
     int server(int port);
     int accept_client();
 };

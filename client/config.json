@@ -15,9 +15,9 @@
     "listeners": [
         {
             //address: Ip address,0.0.0.0 by default
-            "address": "2001:da8:201d:1107::8622",
+            "address": "0.0.0.0",
             //port: Port number
-            "port": 8848,
+            "port": 18080,
             //https: If true, use https for security,false by default
             "https": false
         }

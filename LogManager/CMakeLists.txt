@@ -69,19 +69,19 @@ aux_source_directory(plugins PLUGIN_SRC)
 aux_source_directory(models MODEL_SRC)
 
 drogon_create_views(${PROJECT_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/views
-        ${CMAKE_CURRENT_BINARY_DIR})
+                    ${CMAKE_CURRENT_BINARY_DIR})
 
 
 target_include_directories(${PROJECT_NAME}
-        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/models)
+                           PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+                                   ${CMAKE_CURRENT_SOURCE_DIR}/models)
 target_sources(${PROJECT_NAME}
-        PRIVATE
-        ${SRC_DIR}
-        ${CTL_SRC}
-        ${FILTER_SRC}
-        ${PLUGIN_SRC}
-        ${MODEL_SRC})
+               PRIVATE
+               ${SRC_DIR}
+               ${CTL_SRC}
+               ${FILTER_SRC}
+               ${PLUGIN_SRC}
+               ${MODEL_SRC})
 # ##############################################################################
 # uncomment the following line for dynamically loading views
 # set_property(TARGET ${PROJECT_NAME} PROPERTY ENABLE_EXPORTS ON)
@@ -91,7 +91,3 @@ target_sources(${PROJECT_NAME}
 
 add_subdirectory(test)
 
-file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/param DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/)
-file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/config.json DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/)
-file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/assets DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/)
-file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/index.html DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/)

@@ -86,7 +86,7 @@
 // messages and the information flow.
 #include "sample_messages.h"
 
-#define ENCLAVE_PATH "enclave.signed.so"
+#define ENCLAVE_PATH "build/enclave.signed.so"
 
 // 1--open   0--close
 #define test_enable (1)
@@ -331,6 +331,7 @@ int main(int argc, char *argv[]) {
     NetworkClient client;
     int pkg_port = 12333;
     int lm_port = 22333;
+    std::string lm_ip = "2001:da8:201d:1107::c622";
     int mod = 0;
     int launch_token_update = 0;
     sgx_launch_token_t launch_token = {0};
@@ -402,7 +403,9 @@ int main(int argc, char *argv[]) {
 
 //                auto resp = HttpResponse::newHttpResponse();
 //                resp->setBody("Hello, World!");
-                auto resp = HttpResponse::newHttpViewResponse("ClientView");
+                HttpViewData data;
+                data.insert("title", "Drogon");
+                auto resp = HttpResponse::newHttpViewResponse("ClientView", data);
                 callback(resp);
 //                LOG_INFO << "HERE!!";
             });
@@ -454,7 +457,7 @@ int main(int argc, char *argv[]) {
         int ret = 0;
 
 
-        if (client.client("2001:da8:201d:1107::8622", lm_port) != 0) {
+        if (client.client(lm_ip.c_str(), lm_port) != 0) {
             resp_str = "Connect Server Error!";
             ret = -1;
         }
@@ -487,7 +490,7 @@ int main(int argc, char *argv[]) {
     });
 
 
-    LOG_INFO << "Server running on [2001:da8:201d:1107::8622]:8848";
+    LOG_INFO << "Server running on 0.0.0.0:18080";
     try {
 //        app().addListener("127.0.0.1", 8848).run();
         drogon::app().loadConfigFile("./config.json");
@@ -554,7 +557,7 @@ int main(int argc, char *argv[]) {
             for (int i = 0; i < loops; ++i) {
                 start = clock();
 
-                if (client.client("2001:da8:201d:1107::8622", lm_port) != 0) {
+                if (client.client(lm_ip.c_str(), lm_port) != 0) {
                     DBG(OUTPUT, "Connect Server Error, Exit!\n");
                     ret = -1;
                     goto CLEANUP;
@@ -598,7 +601,7 @@ int main(int argc, char *argv[]) {
 
         case 4:
 
-            if (client.client("127.0.0.1", lm_port) != 0) {
+            if (client.client(lm_ip.c_str(), lm_port) != 0) {
                 DBG(OUTPUT, "Connect Server Error, Exit!\n");
                 ret = -1;
                 goto CLEANUP;
