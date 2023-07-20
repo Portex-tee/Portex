@@ -47,20 +47,12 @@
 // Needed for definition of remote attestation messages.
 #include "remote_attestation_result.h"
 
-#include "isv_enclave_u.h"
+//#include "isv_enclave_u.h"
 
-// Needed to call untrusted key exchange library APIs, i.e. sgx_ra_proc_msg2.
-#include "sgx_ukey_exchange.h"
 
 // Needed to get service provider's information, in your real project, you will
 // need to talk to real server.
 #include "network_ra.h"
-
-// Needed to create enclave and do ecall.
-#include "sgx_urts.h"
-
-// Needed to query extended epid group id.
-#include "sgx_uae_service.h"
 
 #include "service_provider.h"
 
@@ -115,10 +107,9 @@ void getLocalTime(char *timeStr, int len, struct timeval tv) {
     sprintf(timeStr, "%s.%03ld", timeStr, milliseconds);
 }
 
-int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enclave_id, FILE *OUTPUT) {
+int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, FILE *OUTPUT) {
 
     int ret = 0;
-    sgx_status_t status = SGX_SUCCESS;
     ra_samp_request_header_t *p_request = NULL;
     ra_samp_response_header_t *p_response = NULL;
     int recvlen = 0;
@@ -244,7 +235,6 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, sgx_enclave_id_t enc
 int client_trace(NetworkClient client) {
 
     int ret = 0;
-    sgx_status_t status = SGX_SUCCESS;
     ra_samp_request_header_t *p_request = NULL;
     ra_samp_response_header_t *p_response = NULL;
     int recvlen = 0;
@@ -326,7 +316,7 @@ int client_inspect(const std::string &dk2_path, AibeAlgo &aibeAlgo) {
 int main(int argc, char *argv[]) {
     //    printf("%d\n", sizeof(uint8_t));
     int ret = 0;
-    sgx_enclave_id_t enclave_id = 0;
+//    sgx_enclave_id_t enclave_id = 0;
     AibeAlgo aibeAlgo;
     NetworkClient client;
     int pkg_port = 12333;
@@ -334,23 +324,17 @@ int main(int argc, char *argv[]) {
     std::string lm_ip = "2001:da8:201d:1107::c622";
     int mod = 0;
     int launch_token_update = 0;
-    sgx_launch_token_t launch_token = {0};
     FILE *f;
     int ct_size, msg_size;
     std::string dk2_path;
 
     // test
 
-    sgx_status_t status = SGX_SUCCESS;
     int busy_retry_time;
     int data_len = 1 << 13;
     uint8_t data[data_len];
     uint8_t output[data_len];
     uint8_t mac[data_len];
-    sgx_ec256_public_t ecc_pub;
-    sgx_ec256_private_t ecc_pri;
-    sgx_ec256_signature_t ecc_sig;
-    sgx_ecc_state_handle_t ecc_handle;
     uint8_t result;
 
     //    test vars
@@ -379,21 +363,21 @@ int main(int argc, char *argv[]) {
     ////    element init
     aibeAlgo.init();
 
-    memset(&launch_token, 0, sizeof(sgx_launch_token_t));
-    {
-        ret = sgx_create_enclave(_T(ENCLAVE_PATH),
-                                 SGX_DEBUG_FLAG,
-                                 &launch_token,
-                                 &launch_token_update,
-                                 &enclave_id, NULL);
-        if (SGX_SUCCESS != ret) {
-            ret = -1;
-            DBG(OUTPUT, "Error, call sgx_create_enclave fail [%s].\n",
-                __FUNCTION__);
-            goto CLEANUP;
-        }
-        DBG(OUTPUT, "Call sgx_create_enclave success.\n");
-    }
+//    memset(&launch_token, 0, sizeof(sgx_launch_token_t));
+//    {
+//        ret = sgx_create_enclave(_T(ENCLAVE_PATH),
+//                                 SGX_DEBUG_FLAG,
+//                                 &launch_token,
+//                                 &launch_token_update,
+//                                 &enclave_id, NULL);
+//        if (SGX_SUCCESS != ret) {
+//            ret = -1;
+//            DBG(OUTPUT, "Error, call sgx_create_enclave fail [%s].\n",
+//                __FUNCTION__);
+//            goto CLEANUP;
+//        }
+//        DBG(OUTPUT, "Call sgx_create_enclave success.\n");
+//    }
 
     // drogon add handler
     app().registerHandler(
@@ -466,7 +450,7 @@ int main(int argc, char *argv[]) {
             aibeAlgo.mpk_load();
             j.at("id").get_to(aibeAlgo.id);
             j.at("sn").get_to(aibeAlgo.sn);
-            client_keyreq(client, aibeAlgo, enclave_id, OUTPUT);
+            client_keyreq(client, aibeAlgo, OUTPUT);
 
             aibeAlgo.dk_load();
             ct_size = ct.size();
@@ -500,163 +484,163 @@ int main(int argc, char *argv[]) {
     }
 
 
-    printf("Please choose a function:\n"
-           "1) encrypt\n"
-           "2) key request\n"
-           "3) decrypt\n"
-           "4) log trace\n"
-           "5) tee inspect\n"
-           "Please input a number:");
-    scanf("%d", &mod);
-
-    switch (mod) {
-        case 0: {
-            std::cout << "Generated client (vk, sk)" << std::endl;
-
-            // generate ecdsa signing key pair
-            ecdsa_kgen("param/client-verify.pem", "param/client-sign.pem");
-
-            // generate ecc public key pair
-            ecc_kgen("../pkg/param/client-pk.pem", "param/client-sk.pem");
-        }
-            break;
-
-        case 1:
-            // Encrypt
-            aibeAlgo.mpk_load();
-            DBG(OUTPUT, "Client: setup finished");
-            DBG(OUTPUT, "Start Encrypt\n");
-            std::cout << "Receiver ID: " << std::endl;
-            //            std::cin >> id;
-
-            f = fopen(msg_path, "r+");
-            msg_size = fread(msg_buf, sizeof(uint8_t), aibeAlgo.size_ct, f);
-            fclose(f);
-
-            fprintf(OUTPUT, "Message:\n%s\n", msg_buf);
-            DBG(OUTPUT, "Message size: %d\n", msg_size);
-
-            ct_size = aibeAlgo.encrypt(ct_buf, (char *) msg_buf, aibeAlgo.idsn());
-
-            ct = std::vector<uint8_t>(ct_buf, ct_buf + ct_size);
-            j = json{
-                    {"id", ID},
-                    {"sn", SN},
-                    {"ct", ct}};
-
-            std::ofstream(ct_path) << j;
-
-            DBG(OUTPUT, "encrypt size: %d, block size %d\n", ct_size, aibeAlgo.size_block);
-
-            break;
-
-        case 2:
-
-            sum = sum_pkg = 0;
-            aibeAlgo.mpk_load();
-            for (int i = 0; i < loops; ++i) {
-                start = clock();
-
-                if (client.client(lm_ip.c_str(), lm_port) != 0) {
-                    DBG(OUTPUT, "Connect Server Error, Exit!\n");
-                    ret = -1;
-                    goto CLEANUP;
-                }
-                client_keyreq(client, aibeAlgo, enclave_id, OUTPUT);
-                DBG(OUTPUT, "Key request finished\n");
-                //                ts_pkg[i] += ra_temp;
-                end = clock();
-                ts[i] = end - start;
-                sum += ts[i];
-                //                sum_pkg += ts_pkg[i];
-            }
-
-            //            printf("%d,%lf\n", N, sum / loops);
-            break;
-
-        case 3:
-            aibeAlgo.dk_load();
-            aibeAlgo.mpk_load();
-            DBG(OUTPUT, "Client: setup finished\n");
-            DBG(OUTPUT, "Start Decrypt\n");
-
-            std::ifstream(ct_path) >> j;
-            j.at("ct").get_to(ct);
-            j.at("id").get_to(aibeAlgo.id);
-            j.at("sn").get_to(aibeAlgo.sn);
-            ct_size = ct.size();
-
-            DBG(OUTPUT, "decrypt size: %d, ct size: %zu\n", ct_size, ct.size());
-
-            std::copy(ct.begin(), ct.end(), ct_buf);
-
-            aibeAlgo.decrypt(msg_buf, ct_buf, ct_size);
-            printf("%s\n", msg_buf);
-
-            f = fopen(out_path, "w+");
-            fwrite(msg_buf, strlen((char *) msg_buf), 1, f);
-            fclose(f);
-
-            break;
-
-        case 4:
-
-            if (client.client(lm_ip.c_str(), lm_port) != 0) {
-                DBG(OUTPUT, "Connect Server Error, Exit!\n");
-                ret = -1;
-                goto CLEANUP;
-            }
-            client_trace(client);
-            DBG(OUTPUT, "Log trace finished\n");
-
-            break;
-
-        case 5:
-
-            printf("Please input decrypt key file path:\n");
-            std::cin >> dk2_path;
-            ret = client_inspect(dk2_path, aibeAlgo);
-            DBG(OUTPUT, "[DBG] TEE inspect finished\n");
-
-            {
-                DBG(stdout, "[DBG] Client decrypt key:\n");
-                ELE_DBG(stdout, "dk.d1: %B\n", aibeAlgo.dk.d1);
-                ELE_DBG(stdout, "dk.d2: %B\n", aibeAlgo.dk.d2);
-                ELE_DBG(stdout, "dk.d3: %B\n", aibeAlgo.dk.d3);
-            }
-
-            {
-                DBG(stdout, "[DBG] Input decrypt key:\n");
-                ELE_DBG(stdout, "dk2.d1: %B\n", aibeAlgo.dk2.d1);
-                ELE_DBG(stdout, "dk2.d2: %B\n", aibeAlgo.dk2.d2);
-                ELE_DBG(stdout, "dk2.d3: %B\n", aibeAlgo.dk2.d3);
-            }
-
-            switch (ret) {
-                case 0:
-                    printf("PASS: No misbehavior detected!\n");
-                    break;
-                case -1:
-                    printf("ERROR: TEE inspect failed\n");
-                    break;
-                case 1:
-                    printf("FAILED: TEE misbehavior detected!\n");
-                    break;
-                default:
-                    DBG(OUTPUT, "ERROR: TEE inspect failed\n");
-            }
-
-            break;
-
-        default:
-            printf("Invalid function number, exit\n");
-            goto CLEANUP;
-    }
+//    printf("Please choose a function:\n"
+//           "1) encrypt\n"
+//           "2) key request\n"
+//           "3) decrypt\n"
+//           "4) log trace\n"
+//           "5) tee inspect\n"
+//           "Please input a number:");
+//    scanf("%d", &mod);
+//
+//    switch (mod) {
+//        case 0: {
+//            std::cout << "Generated client (vk, sk)" << std::endl;
+//
+//            // generate ecdsa signing key pair
+//            ecdsa_kgen("param/client-verify.pem", "param/client-sign.pem");
+//
+//            // generate ecc public key pair
+//            ecc_kgen("../pkg/param/client-pk.pem", "param/client-sk.pem");
+//        }
+//            break;
+//
+//        case 1:
+//            // Encrypt
+//            aibeAlgo.mpk_load();
+//            DBG(OUTPUT, "Client: setup finished");
+//            DBG(OUTPUT, "Start Encrypt\n");
+//            std::cout << "Receiver ID: " << std::endl;
+//            //            std::cin >> id;
+//
+//            f = fopen(msg_path, "r+");
+//            msg_size = fread(msg_buf, sizeof(uint8_t), aibeAlgo.size_ct, f);
+//            fclose(f);
+//
+//            fprintf(OUTPUT, "Message:\n%s\n", msg_buf);
+//            DBG(OUTPUT, "Message size: %d\n", msg_size);
+//
+//            ct_size = aibeAlgo.encrypt(ct_buf, (char *) msg_buf, aibeAlgo.idsn());
+//
+//            ct = std::vector<uint8_t>(ct_buf, ct_buf + ct_size);
+//            j = json{
+//                    {"id", ID},
+//                    {"sn", SN},
+//                    {"ct", ct}};
+//
+//            std::ofstream(ct_path) << j;
+//
+//            DBG(OUTPUT, "encrypt size: %d, block size %d\n", ct_size, aibeAlgo.size_block);
+//
+//            break;
+//
+//        case 2:
+//
+//            sum = sum_pkg = 0;
+//            aibeAlgo.mpk_load();
+//            for (int i = 0; i < loops; ++i) {
+//                start = clock();
+//
+//                if (client.client(lm_ip.c_str(), lm_port) != 0) {
+//                    DBG(OUTPUT, "Connect Server Error, Exit!\n");
+//                    ret = -1;
+//                    goto CLEANUP;
+//                }
+//                client_keyreq(client, aibeAlgo, OUTPUT);
+//                DBG(OUTPUT, "Key request finished\n");
+//                //                ts_pkg[i] += ra_temp;
+//                end = clock();
+//                ts[i] = end - start;
+//                sum += ts[i];
+//                //                sum_pkg += ts_pkg[i];
+//            }
+//
+//            //            printf("%d,%lf\n", N, sum / loops);
+//            break;
+//
+//        case 3:
+//            aibeAlgo.dk_load();
+//            aibeAlgo.mpk_load();
+//            DBG(OUTPUT, "Client: setup finished\n");
+//            DBG(OUTPUT, "Start Decrypt\n");
+//
+//            std::ifstream(ct_path) >> j;
+//            j.at("ct").get_to(ct);
+//            j.at("id").get_to(aibeAlgo.id);
+//            j.at("sn").get_to(aibeAlgo.sn);
+//            ct_size = ct.size();
+//
+//            DBG(OUTPUT, "decrypt size: %d, ct size: %zu\n", ct_size, ct.size());
+//
+//            std::copy(ct.begin(), ct.end(), ct_buf);
+//
+//            aibeAlgo.decrypt(msg_buf, ct_buf, ct_size);
+//            printf("%s\n", msg_buf);
+//
+//            f = fopen(out_path, "w+");
+//            fwrite(msg_buf, strlen((char *) msg_buf), 1, f);
+//            fclose(f);
+//
+//            break;
+//
+//        case 4:
+//
+//            if (client.client(lm_ip.c_str(), lm_port) != 0) {
+//                DBG(OUTPUT, "Connect Server Error, Exit!\n");
+//                ret = -1;
+//                goto CLEANUP;
+//            }
+//            client_trace(client);
+//            DBG(OUTPUT, "Log trace finished\n");
+//
+//            break;
+//
+//        case 5:
+//
+//            printf("Please input decrypt key file path:\n");
+//            std::cin >> dk2_path;
+//            ret = client_inspect(dk2_path, aibeAlgo);
+//            DBG(OUTPUT, "[DBG] TEE inspect finished\n");
+//
+//            {
+//                DBG(stdout, "[DBG] Client decrypt key:\n");
+//                ELE_DBG(stdout, "dk.d1: %B\n", aibeAlgo.dk.d1);
+//                ELE_DBG(stdout, "dk.d2: %B\n", aibeAlgo.dk.d2);
+//                ELE_DBG(stdout, "dk.d3: %B\n", aibeAlgo.dk.d3);
+//            }
+//
+//            {
+//                DBG(stdout, "[DBG] Input decrypt key:\n");
+//                ELE_DBG(stdout, "dk2.d1: %B\n", aibeAlgo.dk2.d1);
+//                ELE_DBG(stdout, "dk2.d2: %B\n", aibeAlgo.dk2.d2);
+//                ELE_DBG(stdout, "dk2.d3: %B\n", aibeAlgo.dk2.d3);
+//            }
+//
+//            switch (ret) {
+//                case 0:
+//                    printf("PASS: No misbehavior detected!\n");
+//                    break;
+//                case -1:
+//                    printf("ERROR: TEE inspect failed\n");
+//                    break;
+//                case 1:
+//                    printf("FAILED: TEE misbehavior detected!\n");
+//                    break;
+//                default:
+//                    DBG(OUTPUT, "ERROR: TEE inspect failed\n");
+//            }
+//
+//            break;
+//
+//        default:
+//            printf("Invalid function number, exit\n");
+//            goto CLEANUP;
+//    }
 
     CLEANUP:
     terminate(client);
     client.Cleanupsocket();
-    sgx_destroy_enclave(enclave_id);
+//    sgx_destroy_enclave(enclave_id);
 
     aibeAlgo.clear();
     DBG(OUTPUT, "Success Clean Up A-IBE \n");

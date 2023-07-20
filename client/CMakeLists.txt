@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 project(Client)
+set(MY_LIBRARY_VERSION 1.0.0)
 
 include(CheckIncludeFileCXX)
 
@@ -13,38 +14,23 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/../cmake)
-find_package(SGX REQUIRED)
+
 find_package(Drogon CONFIG REQUIRED)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 
-include_directories(${SGX_INCLUDE_DIR} service_provider sample_libcrypto isv_app isv_enclave)
-
-set(EDL_SEARCH_PATHS isv_enclave)
-
-set(LDS isv_enclave/isv_enclave.lds)
-
-set(E_SRCS isv_enclave/isv_enclave.cpp)
+include_directories(${SGX_INCLUDE_DIR} service_provider sample_libcrypto isv_app)
 
 # libs
-set(PROJ_LIBS -lcryptopp -lpbc -lgmp service_provider -lm -lc -lstdc++ -lhv)
+set(PROJ_LIBS -lcryptopp -lpbc -lgmp service_provider)
 
 file(GLOB U_SRCS service_provider/*.cpp)
 add_library(service_provider STATIC ${U_SRCS})
 
 file(GLOB LIB_SAMP sample_libcrypto/libsample_libcrypto.so)
 
-#file(GLOB T_SRCS LocalAttestationCode/*.c*)
-#add_trusted_library(LocalAttestationLib SRCS "${T_SRCS}" EDL LocalAttestationCode/LocalAttestationCode.edl EDL_SEARCH_PATHS ${EDL_SEARCH_PATHS})
-
-#add_trusted_library(trusted_lib SRCS ${T_SRCS} EDL isv_enclave/isv_enclave.edl EDL_SEARCH_PATHS ${EDL_SEARCH_PATHS})
-add_enclave_library(enclave SRCS ${E_SRCS} EDL isv_enclave/isv_enclave.edl EDL_SEARCH_PATHS ${EDL_SEARCH_PATHS} LDSCRIPT ${LDS} USE_SGXSSL 1)
-enclave_sign(enclave KEY isv_enclave/isv_enclave_private.pem CONFIG isv_enclave/isv_enclave.config.xml)
-
 set(SRCS isv_app/isv_app.cpp)
-add_untrusted_executable(${PROJECT_NAME} SRCS ${SRCS} EDL isv_enclave/isv_enclave.edl EDL_SEARCH_PATHS ${EDL_SEARCH_PATHS})
-add_dependencies(${PROJECT_NAME} enclave-sign)
+add_executable(${PROJECT_NAME} ${SRCS} )
 
 target_link_libraries(${PROJECT_NAME} ${PROJ_LIBS} ${LIB_SAMP})
 
@@ -90,4 +76,3 @@ target_sources(${PROJECT_NAME}
 
 
 add_subdirectory(test)
-
