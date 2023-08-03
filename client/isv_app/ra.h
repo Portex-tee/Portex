@@ -124,7 +124,7 @@ void terminate(NetworkClient client) {
     p_request.size = 0;
     p_request.type = TYPE_EXIT;
 
-    memcpy_s(client.sendbuf, BUFSIZ, &p_request, sizeof(ra_samp_request_header_t));
+    memcpy(client.sendbuf, &p_request, sizeof(ra_samp_request_header_t));
     client.SendTo(sizeof(ra_samp_request_header_t) + p_request.size);
 }
 

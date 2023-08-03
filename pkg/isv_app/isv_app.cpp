@@ -604,14 +604,14 @@ int main(int argc, char *argv[]) {
 
     { // creates the cryptserver enclave.
 
-        ret = sgx_get_extended_epid_group_id(&extended_epid_group_id);
-        if (SGX_SUCCESS != ret) {
-            ret = -1;
-            DBG(OUTPUT, "\nError, call sgx_get_extended_epid_group_id fail [%s].",
-                    __FUNCTION__);
-            return ret;
-        }
-        DBG(OUTPUT, "\nCall sgx_get_extended_epid_group_id success.");
+//        ret = sgx_get_extended_epid_group_id(&extended_epid_group_id);
+//        if (SGX_SUCCESS != ret) {
+//            ret = -1;
+//            DBG(OUTPUT, "\nError, call sgx_get_extended_epid_group_id fail [%s].",
+//                    __FUNCTION__);
+//            return ret;
+//        }
+//        DBG(OUTPUT, "\nCall sgx_get_extended_epid_group_id success.");
 
         int launch_token_update = 0;
         sgx_launch_token_t launch_token = {0};
