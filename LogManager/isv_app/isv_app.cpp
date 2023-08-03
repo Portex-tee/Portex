@@ -265,7 +265,7 @@ void http_server() {
 
     drogon::HttpAppFramework::instance()
             .registerHandler
-                    ("/",
+                    ("/service",
                      [=](const drogon::HttpRequestPtr &req,
                          std::function<void(const drogon::HttpResponsePtr &)> &&callback) {
 
