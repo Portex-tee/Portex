@@ -407,7 +407,7 @@ int main(int argc, char *argv[]) {
                                           std::function<void(const HttpResponsePtr &)> &&callback) {
         auto resp = HttpResponse::newHttpResponse();
         std::string resp_str;
-        std::string req_str = req->body().to_string();
+        std::string req_str = req->body().data();
 //        LOG_INFO << req_str;
         json j = json::parse(req_str);
         j.at("ct").get_to(ct);

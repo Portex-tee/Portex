@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
 project(Client)
-set(MY_LIBRARY_VERSION 1.0.0)
 
 include(CheckIncludeFileCXX)
 
@@ -8,8 +7,17 @@ check_include_file_cxx(any HAS_ANY)
 check_include_file_cxx(string_view HAS_STRING_VIEW)
 check_include_file_cxx(coroutine HAS_COROUTINE)
 
-set(CMAKE_CXX_STANDARD 14)
+if (NOT "${CMAKE_CXX_STANDARD}" STREQUAL "")
+    # Do nothing
+elseif (HAS_ANY AND HAS_STRING_VIEW AND HAS_COROUTINE)
+    set(CMAKE_CXX_STANDARD 20)
+elseif (HAS_ANY AND HAS_STRING_VIEW)
+    set(CMAKE_CXX_STANDARD 17)
+else ()
+    set(CMAKE_CXX_STANDARD 14)
+endif ()
 
+message(STATUS "C++ standard: ${CMAKE_CXX_STANDARD}")
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -19,7 +27,7 @@ find_package(Drogon CONFIG REQUIRED)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 
-include_directories(${SGX_INCLUDE_DIR} service_provider sample_libcrypto isv_app)
+include_directories(service_provider sample_libcrypto isv_app)
 
 # libs
 set(PROJ_LIBS -lcryptopp -lpbc -lgmp service_provider)
