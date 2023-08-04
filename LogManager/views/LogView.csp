@@ -89,6 +89,9 @@
                     <li class="fh5co-active">
                         <a href="service">Service</a>
                     </li>
+                    <li>
+                        <a href="http://121.41.111.120:8080/">Client Demo</a>
+                    </li>
                 </ul>
                 <a href="#" class="fh5co-nav-call-to-action js-fh5co-nav-call-to-action">Github</a>
             </nav>

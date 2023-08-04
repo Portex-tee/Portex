@@ -385,12 +385,6 @@ int main(int argc, char *argv[]) {
                             goto CLEANUP;
                         }
 
-                        if (remote_attestation(enclave_id, client) != SGX_SUCCESS) {
-                            fprintf(OUTPUT, "Remote Attestation Error, Exit!\n");
-                            ret = -1;
-                            goto CLEANUP;
-                        }
-
                         lm_keyreq((uint8_t *) p_req + sizeof(ra_samp_request_header_t),
                                   p_req->size,
                                   enclave_id,

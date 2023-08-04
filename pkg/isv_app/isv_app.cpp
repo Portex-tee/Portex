@@ -559,6 +559,7 @@ int main(int argc, char *argv[]) {
     uint32_t extended_epid_group_id = 0;
 
 
+    if (0)
     {
         const char client_path[] = "../client/param/aibe.param";
 
