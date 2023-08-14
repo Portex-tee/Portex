@@ -33,15 +33,14 @@
 // and an ISV Application Server.
 
 #include <iostream>
-#include <fstream>
 #include <ctime>
 #include <stdio.h>
-#include <limits.h>
 #include <unistd.h>
 #include <json.hpp>
 #include "ec_crypto.h"
 #include <drogon/drogon.h>
 #include "ra.h"
+#include <chrono>
 
 
 //#include "isv_enclave_u.h"
@@ -75,10 +74,8 @@
 // messages and the information flow.
 #include "sample_messages.h"
 
-#define ENCLAVE_PATH "build/enclave.signed.so"
-
 // 1--open   0--close
-#define test_enable (1)
+#define experiment_enable (1)
 #define debug_enable (1)
 #define DBG(...)      \
     if (debug_enable) \
@@ -89,9 +86,154 @@
 #define _T(x) x
 
 using json = nlohmann::json;
+using namespace std::chrono;
 using namespace drogon;
+typedef time_point<steady_clock> ts;
+
+int pkg_port = 12333;
+int lm_port = 22333;
+std::string lm_ip = "121.41.111.120";
+const std::string out_dir = "~/experiments/PortexData/testing-data/";
+//std::string lambda_file = out_dir + "lambda/lambda_" + std::to_string(qbits) + "_client.csv";
+//std::string sn_file = out_dir + "N_SN/SN_" + std::to_string(N_SN) + "_client.csv";
+std::string test_file = out_dir + "test_client.csv";
+std::ofstream ofs_enc, ofs_dec;
+const bool is_experiment = true;
 
 FILE *OUTPUT = stdout;
+AibeAlgo aibeAlgo;
+NetworkClient client;
+
+// experiments vars
+const int n_enc = 3, n_dec = 8;
+std::vector<ts> ts_enc[n_enc], ts_dec[n_dec];
+ts s[n_dec], e[n_dec];
+
+void getLocalTime(char *timeStr, int len, struct timeval tv);
+
+int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output);
+
+std::string client_encrypt(AibeAlgo algo, int id, const std::string &message);
+
+std::string client_decrypt(AibeAlgo algo, const std::string &req_str, NetworkClient networkClient);
+
+int client_trace(NetworkClient networkClient);
+
+int client_inspect(const std::string &dk2_path, AibeAlgo &algo);
+
+void exp_enc();
+
+void exp_dec();
+
+int main(int argc, char *argv[]) {
+    //    printf("%d\n", sizeof(uint8_t));
+    int ret = 0;
+//    sgx_enclave_id_t enclave_id = 0;
+
+    aibeAlgo.id = ID;
+    aibeAlgo.sn = SN;
+    // aibe load_param
+
+    ////    aibe load_param
+    if (aibeAlgo.load_param(param_path)) {
+        DBG(stderr, "Param File Path error\n");
+        exit(-1);
+    }
+
+    DBG(OUTPUT, "A-IBE Success Set Up\n");
+    ////    element init
+    aibeAlgo.init();
+
+    // drogon add handler
+    app().registerHandler(
+            "/",
+            [](const HttpRequestPtr &,
+               std::function<void(const HttpResponsePtr &)> &&callback) {
+                auto resp = HttpResponse::newHttpViewResponse("ClientView");
+                callback(resp);
+            });
+
+    // drogon add encrypt handler, the parameter contains an integer id and a message. The response is a string that dumped from a json structure
+    app().registerHandler("/encrypt?id={user-id}&message={message}", [&](const HttpRequestPtr &req,
+                                                                         std::function<void(
+                                                                                 const HttpResponsePtr &)> &&callback,
+                                                                         const int &id,
+                                                                         const std::string &message) {
+
+        int ct_size;
+        auto resp = HttpResponse::newHttpResponse();
+        auto resp_str = client_encrypt(aibeAlgo, id, message);
+        resp->setBody(resp_str);
+        callback(resp);
+    });
+
+
+    // drogon add decrypt handler for POST, the request body contains a json structure with ct, sn, id, and the response is a string that contains the decrypted message
+    app().registerHandler("/decrypt", [&](const HttpRequestPtr &req,
+                                          std::function<void(const HttpResponsePtr &)> &&callback) {
+        auto resp = HttpResponse::newHttpResponse();
+        std::string req_str = req->body().data();
+        std::string resp_str = client_decrypt(aibeAlgo, req_str, client);
+        resp->setBody(resp_str);
+        callback(resp);
+    });
+
+
+    if (!experiment_enable) {
+        try {
+            LOG_INFO << "Client running on 0.0.0.0:18080";
+            drogon::app().loadConfigFile("./config.json");
+            drogon::app().run();
+        } catch (const std::exception &e) {
+            LOG_ERROR << e.what();
+        }
+    } else {
+//        experiment of Enc
+        exp_enc();
+
+//        experiment of KeyReq + Dec
+
+        exp_dec();
+    }
+
+
+    CLEANUP:
+    terminate(client);
+    client.Cleanupsocket();
+//    sgx_destroy_enclave(enclave_id);
+
+    aibeAlgo.clear();
+    DBG(OUTPUT, "Success Clean Up A-IBE \n");
+
+    return ret;
+}
+
+void exp_enc() {
+    std::string enc_file = out_dir + "time-client-enc.csv";
+    ofs_enc.open(enc_file);
+    ofs_enc << "Portex.Enc(us),"
+               "Enc.Setup(us),"
+               "IBE.Enc(us)"
+            << std::endl;
+
+    ts_enc->clear();
+}
+
+void exp_dec() {
+
+    std::string dec_file = out_dir + "time-client-dec.csv";
+    ofs_dec.open(dec_file);
+    ofs_dec << "KeyRequest(us),"
+               "Portex.Dec(us),"
+               "IBE.KGenC1,"
+               "KReq.SendReq,"
+               "KReq.Verify,"
+               "IBE.KGenC2,"
+               "Dec.Setup(us),"
+               "IBE.Dec(us)"
+            << std::endl;
+}
+
 
 void getLocalTime(char *timeStr, int len, struct timeval tv) {
     struct tm *ptm;
@@ -104,7 +246,7 @@ void getLocalTime(char *timeStr, int len, struct timeval tv) {
     sprintf(timeStr, "%s.%03ld", timeStr, milliseconds);
 }
 
-int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, FILE *OUTPUT) {
+int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output) {
 
     int ret = 0;
     ra_samp_request_header_t *p_request = NULL;
@@ -117,34 +259,40 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, FILE *OUTPUT) {
     std::string sig, str_idsn;
     std::vector<uint8_t> vec_pms, vec_idsn, vec_sig, vec_pkey, vec_pkey_sig, vec_ct;
 
-    //    test
+    microseconds t[6];
+    time_point<steady_clock> ps1, ps2, is1, is2, pe1, pe2, ie1, ie2;
+
+    ps1 = steady_clock::now();
+
     json j_res;
 
     uint8_t p_data[LENOFMSE] = {0};
 
     // get idsn signature
-    str_idsn = std::to_string(aibeAlgo.idsn());
+    str_idsn = std::to_string(algo.idsn());
     vec_idsn = std::vector<uint8_t>(str_idsn.begin(), str_idsn.end());
 
     ecdsa_sign(vec_idsn, vec_sig, "param/client-sign.pem");
 
     // get R and put into jason
-    aibeAlgo.keygen1(aibeAlgo.idsn());
+    is1 = steady_clock::now();
+    algo.keygen1(algo.idsn());
+    ie1 = steady_clock::now();
 
-    data_size = aibeAlgo.size_comp_G1 * 2;
-    element_to_bytes_compressed(p_data, aibeAlgo.R);
-    element_to_bytes_compressed(p_data + aibeAlgo.size_comp_G1, aibeAlgo.Hz);
+    data_size = algo.size_comp_G1 * 2;
+    element_to_bytes_compressed(p_data, algo.R);
+    element_to_bytes_compressed(p_data + algo.size_comp_G1, algo.Hz);
     vec_pms = std::vector<uint8_t>(p_data, p_data + data_size);
 
     DBG(stdout, "\nData of R and Hz\n");
     PRINT_BYTE_ARRAY(stdout, p_data, data_size);
 
-    ELE_DBG(OUTPUT, "Send R:\n%B", aibeAlgo.R);
+    ELE_DBG(output, "Send R:\n%B", algo.R);
 
     // construct json
     json json1 = {
-            {"id",  aibeAlgo.id},
-            {"sn",  aibeAlgo.sn},
+            {"id",  algo.id},
+            {"sn",  algo.sn},
             {"sig", vec_sig},
             {"pms", vec_pms}};
     msg_body = json1.dump();
@@ -159,17 +307,20 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, FILE *OUTPUT) {
     puts((char *) p_request->body);
 
     // send request
-    memset(client.sendbuf, 0, BUFSIZ);
-    memcpy(client.sendbuf, p_request, sizeof(ra_samp_request_header_t) + msg_size);
-    client.SendTo(sizeof(ra_samp_request_header_t) + msg_size);
+    memset(networkClient.sendbuf, 0, BUFSIZ);
+    memcpy(networkClient.sendbuf, p_request, sizeof(ra_samp_request_header_t) + msg_size);
+    pe1 = steady_clock::now();
+
+    networkClient.SendTo(sizeof(ra_samp_request_header_t) + msg_size);
 
     // recv
-    recvlen = client.RecvFrom();
+    recvlen = networkClient.RecvFrom();
     p_response = (ra_samp_response_header_t *) malloc(
-            sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
+            sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) networkClient.recvbuf)->size);
+    memcpy(p_response, networkClient.recvbuf, recvlen);
 
+    ps2 = steady_clock::now();
 
-    memcpy(p_response, client.recvbuf, recvlen);
     if ((p_response->type != TYPE_LM_KEYREQ)) {
         DBG(stderr, "Error: INTERNAL ERROR - recv type error in [%s]-[%d].",
             __FUNCTION__, __LINE__);
@@ -202,33 +353,149 @@ int client_keyreq(NetworkClient client, AibeAlgo &aibeAlgo, FILE *OUTPUT) {
 
     // keygen 3
 
-    dk_from_bytes(&aibeAlgo.dk1, vec_pkey.data(), aibeAlgo.size_comp_G1);
+    dk_from_bytes(&algo.dk1, vec_pkey.data(), algo.size_comp_G1);
     {
         DBG(stdout, "Data of dk' is\n");
-        ELE_DBG(stdout, "dk'.d1: %B\n", aibeAlgo.dk1.d1);
-        ELE_DBG(stdout, "dk'.d2: %B\n", aibeAlgo.dk1.d2);
-        ELE_DBG(stdout, "dk'.d3: %B\n", aibeAlgo.dk1.d3);
+        ELE_DBG(stdout, "dk'.d1: %B\n", algo.dk1.d1);
+        ELE_DBG(stdout, "dk'.d2: %B\n", algo.dk1.d2);
+        ELE_DBG(stdout, "dk'.d3: %B\n", algo.dk1.d3);
     }
 
-    if (aibeAlgo.keygen3()) {
+
+    is2 = steady_clock::now();
+    if (algo.keygen3()) {
         ret = -1;
         goto CLEANUP;
     }
+    ie2 = steady_clock::now();
 
     {
         DBG(stdout, "Data of dk is\n");
-        ELE_DBG(stdout, "dk.d1: %B\n", aibeAlgo.dk.d1);
-        ELE_DBG(stdout, "dk.d2: %B\n", aibeAlgo.dk.d2);
-        ELE_DBG(stdout, "dk.d3: %B\n", aibeAlgo.dk.d3);
+        ELE_DBG(stdout, "dk.d1: %B\n", algo.dk.d1);
+        ELE_DBG(stdout, "dk.d2: %B\n", algo.dk.d2);
+        ELE_DBG(stdout, "dk.d3: %B\n", algo.dk.d3);
     }
-    aibeAlgo.dk_store();
+    algo.dk_store();
+
+    pe2 = steady_clock::now();
 
     CLEANUP:
+    t[0] = duration_cast<microseconds>(pe1 - ps1);
+    t[1] = duration_cast<microseconds>(ie1 - is1);
+    t[2] = t[0] - t[1];
+    t[3] = duration_cast<microseconds>(pe2 - ps2);
+    t[4] = duration_cast<microseconds>(ie2 - is2);
+    t[5] = t[3] - t[4];
+
+    for (int j = 0; j < 6; ++j) {
+        ofs_enc << t[j].count();
+        if (j == 5)
+            ofs_enc << std::endl;
+        else
+            ofs_enc << ',';
+    }
+
+
     SAFE_FREE(p_response);
     return ret;
 }
 
-int client_trace(NetworkClient client) {
+std::string client_encrypt(AibeAlgo algo, int id, const std::string &message) {
+
+    s[0] = s[1] = steady_clock::now();
+
+    int ct_size;
+    std::string resp_str;
+    uint8_t ct_buf[algo.size_ct + 10];
+
+    algo.mpk_load();
+    algo.id = id;
+    algo.set_SN();
+
+    e[1] = s[2] = steady_clock::now();
+
+    ct_size = algo.encrypt(ct_buf, message.c_str(), algo.idsn());
+
+    e[2] = steady_clock::now();
+
+    std::vector ct = std::vector<uint8_t>(ct_buf, ct_buf + ct_size);
+    json j = json{
+            {"ct", ct},
+            {"sn", algo.sn},
+            {"id", algo.id}
+    };
+
+    std::ofstream(ct_path) << j;
+    LOG_INFO << j.dump();
+    resp_str += j.dump();
+
+    e[0] = steady_clock::now();
+
+    if (experiment_enable) {
+        for (int i = 0; i < n_enc; ++i) {
+            ts_enc[i].emplace_back(duration_cast<microseconds>(e[i] - s[i]));
+        }
+    }
+
+    return resp_str;
+}
+
+std::string client_decrypt(AibeAlgo algo, const std::string &req_str, NetworkClient networkClient) {
+
+    s[0] = steady_clock::now();
+
+    std::vector<uint8_t> ct;
+    std::string resp_str;
+//        LOG_INFO << req_str;
+    json j = json::parse(req_str);
+    j.at("ct").get_to(ct);
+    uint8_t ct_buf[ct.size()];
+    uint8_t msg_buf[algo.size_ct + 10];
+
+    std::copy(ct.begin(), ct.end(), ct_buf);
+    int ret = 0;
+
+
+    if (networkClient.client(lm_ip.c_str(), lm_port) != 0) {
+        resp_str = "Connect Server Error!";
+        ret = -1;
+    }
+
+    if (ret == 0) {
+        algo.mpk_load();
+        j.at("id").get_to(algo.id);
+        j.at("sn").get_to(algo.sn);
+        client_keyreq(networkClient, algo, OUTPUT);
+
+        algo.dk_load();
+        int ct_size = ct.size();
+//            DBG(OUTPUT, "Client: setup finished\n");
+//            DBG(OUTPUT, "Start Decrypt\n");
+        LOG_INFO << "Start Decrypt";
+        LOG_INFO << "json" << j.dump();
+
+
+//            DBG(OUTPUT, "decrypt size: %d, ct size: %zu\n", ct_size, ct.size());
+
+        std::copy(ct.begin(), ct.end(), ct_buf);
+
+        algo.decrypt(msg_buf, ct_buf, ct_size);
+        LOG_INFO << "Decrypted Message:\n" << msg_buf;
+        resp_str = std::string((char *) msg_buf);
+    }
+
+    e[0] = steady_clock::now();
+
+    if (experiment_enable) {
+        for (int i = 0; i < n_dec; ++i) {
+            ts_enc[i].emplace_back(duration_cast<microseconds>(e[i] - s[i]));
+        }
+    }
+
+    return resp_str;
+}
+
+int client_trace(NetworkClient networkClient) {
 
     int ret = 0;
     ra_samp_request_header_t *p_request = NULL;
@@ -247,16 +514,16 @@ int client_trace(NetworkClient client) {
     p_request->type = TYPE_LM_TRACE;
     *((int *) p_request->body) = IDSN;
 
-    memset(client.sendbuf, 0, BUFSIZ);
-    memcpy(client.sendbuf, p_request, sizeof(ra_samp_request_header_t) + msg_size);
-    client.SendTo(sizeof(ra_samp_request_header_t) + msg_size);
+    memset(networkClient.sendbuf, 0, BUFSIZ);
+    memcpy(networkClient.sendbuf, p_request, sizeof(ra_samp_request_header_t) + msg_size);
+    networkClient.SendTo(sizeof(ra_samp_request_header_t) + msg_size);
 
     // recv
-    recvlen = client.RecvFrom();
+    recvlen = networkClient.RecvFrom();
     p_response = (ra_samp_response_header_t *) malloc(
-            sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
+            sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) networkClient.recvbuf)->size);
 
-    memcpy(p_response, client.recvbuf, recvlen);
+    memcpy(p_response, networkClient.recvbuf, recvlen);
     if ((p_response->type != TYPE_LM_TRACE)) {
         DBG(stderr, "Error: INTERNAL ERROR - recv type error in [%s]-[%d].",
             __FUNCTION__, __LINE__);
@@ -281,26 +548,26 @@ int client_trace(NetworkClient client) {
     return ret;
 }
 
-int client_inspect(const std::string &dk2_path, AibeAlgo &aibeAlgo) {
-    aibeAlgo.dk_load();
-    aibeAlgo.dk2_load(dk2_path);
-    aibeAlgo.mpk_load();
-    aibeAlgo.set_Hz(IDSN);
+int client_inspect(const std::string &dk2_path, AibeAlgo &algo) {
+    algo.dk_load();
+    algo.dk2_load(dk2_path);
+    algo.mpk_load();
+    algo.set_Hz(IDSN);
 
-    if (!aibeAlgo.dk_verify()) {
+    if (!algo.dk_verify()) {
         printf("Client decrypt key is invalid!\n");
         return -1;
     }
     printf("Client decrypt key is valid!\n");
 
-    if (!aibeAlgo.dk_verify(aibeAlgo.dk2)) {
+    if (!algo.dk_verify(algo.dk2)) {
         printf("Input decrypt key is invalid!\n");
         return 0;
     }
     printf("Input decrypt key is valid!\n");
 
-    if (element_cmp(aibeAlgo.dk.d1, aibeAlgo.dk2.d1) || element_cmp(aibeAlgo.dk.d2, aibeAlgo.dk2.d2) ||
-        element_cmp(aibeAlgo.dk.d3, aibeAlgo.dk2.d3)) {
+    if (element_cmp(algo.dk.d1, algo.dk2.d1) || element_cmp(algo.dk.d2, algo.dk2.d2) ||
+        element_cmp(algo.dk.d3, algo.dk2.d3)) {
         printf("Another valid key detected!\n");
         return 1;
     }
@@ -309,163 +576,3 @@ int client_inspect(const std::string &dk2_path, AibeAlgo &aibeAlgo) {
     return 0;
 }
 
-int main(int argc, char *argv[]) {
-    //    printf("%d\n", sizeof(uint8_t));
-    int ret = 0;
-//    sgx_enclave_id_t enclave_id = 0;
-    AibeAlgo aibeAlgo;
-    NetworkClient client;
-    int pkg_port = 12333;
-    int lm_port = 22333;
-    std::string lm_ip = "121.41.111.120";
-    int mod = 0;
-    int launch_token_update = 0;
-    FILE *f;
-    int ct_size, msg_size;
-    std::string dk2_path;
-
-    // test
-
-    int busy_retry_time;
-    int data_len = 1 << 13;
-    uint8_t data[data_len];
-    uint8_t output[data_len];
-    uint8_t mac[data_len];
-    uint8_t result;
-
-    //    test vars
-    int loops = 1;
-    clock_t cnt;
-    clock_t start, end;
-    double sum, sum_pkg, ra_temp;
-    double ts[10100], ts_pkg[10100];
-    json j;
-
-    aibeAlgo.id = ID;
-    aibeAlgo.sn = SN;
-    // aibe load_param
-
-    ////    aibe load_param
-    if (aibeAlgo.load_param(param_path)) {
-        DBG(stderr, "Param File Path error\n");
-        exit(-1);
-    }
-//    printf("%d, %d, %d\n", aibeAlgo.size_GT, aibeAlgo.size_comp_G1, aibeAlgo.size_Zr);
-    uint8_t ct_buf[aibeAlgo.size_ct + 10];
-    uint8_t msg_buf[aibeAlgo.size_ct + 10];
-    std::vector<uint8_t> ct;
-    std::vector<uint8_t> msg;
-    DBG(OUTPUT, "A-IBE Success Set Up\n");
-    ////    element init
-    aibeAlgo.init();
-
-
-    // drogon add handler
-    app().registerHandler(
-            "/",
-            [](const HttpRequestPtr &,
-               std::function<void(const HttpResponsePtr &)> &&callback) {
-                auto resp = HttpResponse::newHttpViewResponse("ClientView");
-                callback(resp);
-            });
-
-    // drogon add encrypt handler, the parameter contains an integer id and a message. The response is a string that dumped from a json structure
-    app().registerHandler("/encrypt?id={user-id}&message={message}", [&](const HttpRequestPtr &req,
-                                                                         std::function<void(
-                                                                                 const HttpResponsePtr &)> &&callback,
-                                                                         const int &id,
-                                                                         const std::string &message) {
-        auto resp = HttpResponse::newHttpResponse();
-        std::string resp_str;
-
-        aibeAlgo.mpk_load();
-        aibeAlgo.id = id;
-        aibeAlgo.set_SN();
-
-        LOG_INFO << "Message:\n" << message;
-
-        ct_size = aibeAlgo.encrypt(ct_buf, message.c_str(), aibeAlgo.idsn());
-
-        ct = std::vector<uint8_t>(ct_buf, ct_buf + ct_size);
-        j = json{
-                {"ct", ct},
-                {"sn", aibeAlgo.sn},
-                {"id", aibeAlgo.id}
-        };
-
-        std::ofstream(ct_path) << j;
-        LOG_INFO << j.dump();
-        resp_str += j.dump();
-
-        resp->setBody(resp_str);
-        callback(resp);
-    });
-
-
-    // drogon add decrypt handler for POST, the request body contains a json structure with ct, sn, id, and the response is a string that contains the decrypted message
-    app().registerHandler("/decrypt", [&](const HttpRequestPtr &req,
-                                          std::function<void(const HttpResponsePtr &)> &&callback) {
-        auto resp = HttpResponse::newHttpResponse();
-        std::string resp_str;
-        std::string req_str = req->body().data();
-//        LOG_INFO << req_str;
-        json j = json::parse(req_str);
-        j.at("ct").get_to(ct);
-        uint8_t ct_buf[ct.size()];
-        std::copy(ct.begin(), ct.end(), ct_buf);
-        int ret = 0;
-
-
-        if (client.client(lm_ip.c_str(), lm_port) != 0) {
-            resp_str = "Connect Server Error!";
-            ret = -1;
-        }
-
-        if (ret == 0) {
-            aibeAlgo.mpk_load();
-            j.at("id").get_to(aibeAlgo.id);
-            j.at("sn").get_to(aibeAlgo.sn);
-            client_keyreq(client, aibeAlgo, OUTPUT);
-
-            aibeAlgo.dk_load();
-            ct_size = ct.size();
-//            DBG(OUTPUT, "Client: setup finished\n");
-//            DBG(OUTPUT, "Start Decrypt\n");
-            LOG_INFO << "Start Decrypt";
-            LOG_INFO << "json" << j.dump();
-
-
-//            DBG(OUTPUT, "decrypt size: %d, ct size: %zu\n", ct_size, ct.size());
-
-            std::copy(ct.begin(), ct.end(), ct_buf);
-
-            aibeAlgo.decrypt(msg_buf, ct_buf, ct_size);
-            LOG_INFO << "Decrypted Message:\n" << msg_buf;
-            resp_str = std::string((char *)msg_buf);
-        }
-
-        resp->setBody(resp_str);
-        callback(resp);
-    });
-
-
-    LOG_INFO << "Server running on 0.0.0.0:18080";
-    try {
-//        app().addListener("127.0.0.1", 8848).run();
-        drogon::app().loadConfigFile("./config.json");
-        drogon::app().run();
-    } catch (const std::exception &e) {
-        LOG_ERROR << e.what();
-    }
-
-
-    CLEANUP:
-    terminate(client);
-    client.Cleanupsocket();
-//    sgx_destroy_enclave(enclave_id);
-
-    aibeAlgo.clear();
-    DBG(OUTPUT, "Success Clean Up A-IBE \n");
-
-    return ret;
-}
