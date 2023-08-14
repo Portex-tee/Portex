@@ -1,9 +1,0 @@
-{
-    "makefile.launchConfigurations": [
-        {
-            "cwd": "/media/jojjiw/EX/ub-space/SGXAibeProject/client",
-            "binaryPath": "/media/jojjiw/EX/ub-space/SGXAibeProject/client/app",
-            "binaryArgs": []
-        }
-    ]
-}
