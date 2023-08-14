@@ -90,15 +90,15 @@ using namespace std::chrono;
 using namespace drogon;
 typedef time_point<steady_clock> ts;
 
+int loop = 100;
 int pkg_port = 12333;
 int lm_port = 22333;
 std::string lm_ip = "121.41.111.120";
-const std::string out_dir = "~/experiments/PortexData/testing-data/";
+const std::string out_dir = "/root/experiments/PortexData/testing-data/";
 //std::string lambda_file = out_dir + "lambda/lambda_" + std::to_string(qbits) + "_client.csv";
 //std::string sn_file = out_dir + "N_SN/SN_" + std::to_string(N_SN) + "_client.csv";
 std::string test_file = out_dir + "test_client.csv";
 std::ofstream ofs_enc, ofs_dec;
-const bool is_experiment = true;
 
 FILE *OUTPUT = stdout;
 AibeAlgo aibeAlgo;
@@ -106,14 +106,14 @@ NetworkClient client;
 
 // experiments vars
 const int n_enc = 3, n_dec = 8;
-std::vector<ts> ts_enc[n_enc], ts_dec[n_dec];
+std::vector<microseconds> ts_enc[n_enc], ts_dec[n_dec];
 ts s[n_dec], e[n_dec];
 
 void getLocalTime(char *timeStr, int len, struct timeval tv);
 
 int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output);
 
-std::string client_encrypt(AibeAlgo algo, int id, const std::string &message);
+std::string client_encrypt(AibeAlgo algo, int id, const std::string &message, bool enable_timer = true);
 
 std::string client_decrypt(AibeAlgo algo, const std::string &req_str, NetworkClient networkClient);
 
@@ -192,7 +192,6 @@ int main(int argc, char *argv[]) {
         exp_enc();
 
 //        experiment of KeyReq + Dec
-
         exp_dec();
     }
 
@@ -211,27 +210,54 @@ int main(int argc, char *argv[]) {
 void exp_enc() {
     std::string enc_file = out_dir + "time-client-enc.csv";
     ofs_enc.open(enc_file);
-    ofs_enc << "Portex.Enc(us),"
-               "Enc.Setup(us),"
+    ofs_enc << "Portex.Enc(us)," // 0
+               "Enc.Setup(us)," // 1
                "IBE.Enc(us)"
             << std::endl;
 
     ts_enc->clear();
+    for (int i = 0; i < loop; ++i) {
+        client_encrypt(aibeAlgo, ID, "Hello World!");
+    }
+    // output ts_enc to csv file
+    for (int i = 0; i < loop; ++i) {
+        ofs_enc << ts_enc[0][i].count() << ","
+                << ts_enc[1][i].count() << ","
+                << ts_enc[2][i].count() << std::endl;
+    }
+    ofs_enc.close();
 }
 
 void exp_dec() {
 
+    std::string req_str = client_encrypt(aibeAlgo, ID, "Hello World!", false);
     std::string dec_file = out_dir + "time-client-dec.csv";
     ofs_dec.open(dec_file);
-    ofs_dec << "KeyRequest(us),"
-               "Portex.Dec(us),"
-               "IBE.KGenC1,"
-               "KReq.SendReq,"
-               "KReq.Verify,"
-               "IBE.KGenC2,"
-               "Dec.Setup(us),"
-               "IBE.Dec(us)"
+    ofs_dec << "KeyRequest(us)," // 0
+               "Portex.Dec(us)," // 1
+               "IBE.KGenC1," // 2
+               "KReq.SendReq," // 3
+               "KReq.Verify," // 4
+               "IBE.KGenC2," // 5
+               "Dec.Setup(us)," // 6
+               "IBE.Dec(us)" // 7
             << std::endl;
+    
+    ts_dec->clear();
+    for (int i = 0; i < loop; ++i) {
+        client_decrypt(aibeAlgo, req_str, client);
+    }
+    // output ts_dec to csv file
+    for (int i = 0; i < loop; ++i) {
+        ofs_dec << ts_dec[0][i].count() << ","
+                << ts_dec[1][i].count() << ","
+                << ts_dec[2][i].count() << ","
+                << ts_dec[3][i].count() << ","
+                << ts_dec[4][i].count() << ","
+                << ts_dec[5][i].count() << ","
+                << ts_dec[6][i].count() << ","
+                << ts_dec[7][i].count() << std::endl;
+    }
 }
 
 
@@ -259,11 +285,6 @@ int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output) {
     std::string sig, str_idsn;
     std::vector<uint8_t> vec_pms, vec_idsn, vec_sig, vec_pkey, vec_pkey_sig, vec_ct;
 
-    microseconds t[6];
-    time_point<steady_clock> ps1, ps2, is1, is2, pe1, pe2, ie1, ie2;
-
-    ps1 = steady_clock::now();
-
     json j_res;
 
     uint8_t p_data[LENOFMSE] = {0};
@@ -272,17 +293,20 @@ int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output) {
     str_idsn = std::to_string(algo.idsn());
     vec_idsn = std::vector<uint8_t>(str_idsn.begin(), str_idsn.end());
 
-    ecdsa_sign(vec_idsn, vec_sig, "param/client-sign.pem");
 
     // get R and put into jason
-    is1 = steady_clock::now();
+    s[2] = steady_clock::now();
     algo.keygen1(algo.idsn());
-    ie1 = steady_clock::now();
+    s[3] = e[2] = steady_clock::now();
+
+    ecdsa_sign(vec_idsn, vec_sig, "param/client-sign.pem");
 
     data_size = algo.size_comp_G1 * 2;
     element_to_bytes_compressed(p_data, algo.R);
     element_to_bytes_compressed(p_data + algo.size_comp_G1, algo.Hz);
     vec_pms = std::vector<uint8_t>(p_data, p_data + data_size);
+
+    e[3] = steady_clock::now();
 
     DBG(stdout, "\nData of R and Hz\n");
     PRINT_BYTE_ARRAY(stdout, p_data, data_size);
@@ -297,6 +321,7 @@ int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output) {
             {"pms", vec_pms}};
     msg_body = json1.dump();
 
+
     // construct request
     msg_size = msg_body.size() + 1;
     p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);
@@ -309,17 +334,13 @@ int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output) {
     // send request
     memset(networkClient.sendbuf, 0, BUFSIZ);
     memcpy(networkClient.sendbuf, p_request, sizeof(ra_samp_request_header_t) + msg_size);
-    pe1 = steady_clock::now();
 
     networkClient.SendTo(sizeof(ra_samp_request_header_t) + msg_size);
-
     // recv
     recvlen = networkClient.RecvFrom();
     p_response = (ra_samp_response_header_t *) malloc(
             sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) networkClient.recvbuf)->size);
     memcpy(p_response, networkClient.recvbuf, recvlen);
-
-    ps2 = steady_clock::now();
 
     if ((p_response->type != TYPE_LM_KEYREQ)) {
         DBG(stderr, "Error: INTERNAL ERROR - recv type error in [%s]-[%d].",
@@ -337,11 +358,14 @@ int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output) {
         goto CLEANUP;
     }
 
+    s[4] = steady_clock::now();
+
     j_res = json::parse(std::string((char *) p_response->body));
     j_res.at("pkey_ct").get_to(vec_ct);
     j_res.at("sig").get_to(vec_pkey_sig);
 
     ret = ecdsa_verify(vec_ct, vec_pkey_sig, "./param/pkg-verify.pem");
+
     if (ret) {
         std::cout << "pkey signature is valid" << std::endl;
     } else {
@@ -350,7 +374,6 @@ int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output) {
     }
 
     ecc_decrypt(vec_pkey, vec_ct, "param/client-sk.pem");
-
     // keygen 3
 
     dk_from_bytes(&algo.dk1, vec_pkey.data(), algo.size_comp_G1);
@@ -360,14 +383,15 @@ int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output) {
         ELE_DBG(stdout, "dk'.d2: %B\n", algo.dk1.d2);
         ELE_DBG(stdout, "dk'.d3: %B\n", algo.dk1.d3);
     }
+    e[4] = steady_clock::now();
 
 
-    is2 = steady_clock::now();
+    s[5] = steady_clock::now();
     if (algo.keygen3()) {
         ret = -1;
         goto CLEANUP;
     }
-    ie2 = steady_clock::now();
+    e[5] = steady_clock::now();
 
     {
         DBG(stdout, "Data of dk is\n");
@@ -377,30 +401,16 @@ int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output) {
     }
     algo.dk_store();
 
-    pe2 = steady_clock::now();
-
     CLEANUP:
-    t[0] = duration_cast<microseconds>(pe1 - ps1);
-    t[1] = duration_cast<microseconds>(ie1 - is1);
-    t[2] = t[0] - t[1];
-    t[3] = duration_cast<microseconds>(pe2 - ps2);
-    t[4] = duration_cast<microseconds>(ie2 - is2);
-    t[5] = t[3] - t[4];
-
-    for (int j = 0; j < 6; ++j) {
-        ofs_enc << t[j].count();
-        if (j == 5)
-            ofs_enc << std::endl;
-        else
-            ofs_enc << ',';
-    }
-
-
     SAFE_FREE(p_response);
     return ret;
 }
 
-std::string client_encrypt(AibeAlgo algo, int id, const std::string &message) {
+std::string client_encrypt(AibeAlgo algo, int id, const std::string &message, bool enable_timer) {
+//    clear s, e
+    for (int i = 0; i < n_enc; ++i) {
+        s[i] = e[i] = steady_clock::now();
+    }
 
     s[0] = s[1] = steady_clock::now();
 
@@ -431,7 +441,7 @@ std::string client_encrypt(AibeAlgo algo, int id, const std::string &message) {
 
     e[0] = steady_clock::now();
 
-    if (experiment_enable) {
+    if (experiment_enable && enable_timer) {
         for (int i = 0; i < n_enc; ++i) {
             ts_enc[i].emplace_back(duration_cast<microseconds>(e[i] - s[i]));
         }
@@ -441,6 +451,11 @@ std::string client_encrypt(AibeAlgo algo, int id, const std::string &message) {
 }
 
 std::string client_decrypt(AibeAlgo algo, const std::string &req_str, NetworkClient networkClient) {
+
+//    clear s, e
+    for (int i = 0; i < n_enc; ++i) {
+        s[i] = e[i] = steady_clock::now();
+    }
 
     s[0] = steady_clock::now();
 
@@ -467,28 +482,30 @@ std::string client_decrypt(AibeAlgo algo, const std::string &req_str, NetworkCli
         j.at("sn").get_to(algo.sn);
         client_keyreq(networkClient, algo, OUTPUT);
 
-        algo.dk_load();
-        int ct_size = ct.size();
-//            DBG(OUTPUT, "Client: setup finished\n");
-//            DBG(OUTPUT, "Start Decrypt\n");
+        s[6] = s[1] = e[0] = steady_clock::now();
+
         LOG_INFO << "Start Decrypt";
         LOG_INFO << "json" << j.dump();
 
-
-//            DBG(OUTPUT, "decrypt size: %d, ct size: %zu\n", ct_size, ct.size());
+        algo.dk_load();
+        int ct_size = ct.size();
 
         std::copy(ct.begin(), ct.end(), ct_buf);
 
+        s[7] = e[6] = steady_clock::now();
+
         algo.decrypt(msg_buf, ct_buf, ct_size);
+
+        e[7] = steady_clock::now();
         LOG_INFO << "Decrypted Message:\n" << msg_buf;
         resp_str = std::string((char *) msg_buf);
     }
 
-    e[0] = steady_clock::now();
+    e[1] = steady_clock::now();
 
     if (experiment_enable) {
         for (int i = 0; i < n_dec; ++i) {
-            ts_enc[i].emplace_back(duration_cast<microseconds>(e[i] - s[i]));
+            ts_dec[i].emplace_back(duration_cast<microseconds>(e[i] - s[i]));
         }
     }
 
