@@ -1,0 +1,1 @@
+/usr/bin/c++   -std=c++14   CMakeFiles/LogManager_test.dir/test_main.cc.o  -o LogManager_test  -Wl,-rpath,/usr/local/lib /usr/local/lib/libdrogon.a /usr/local/lib/libtrantor.a -lpthread -lpthread -ldl /usr/lib/x86_64-linux-gnu/libjsoncpp.so /usr/lib/x86_64-linux-gnu/libuuid.so /usr/lib/x86_64-linux-gnu/libz.so /usr/local/lib/libssl.so /usr/local/lib/libcrypto.so 

@@ -1,0 +1,14 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/media/jojjiw/EX/ub-space/SGXAibeProject/client/test/test_main.cc
+drogon/drogon_test.h
+-
+drogon/drogon.h
+-
+

@@ -138,7 +138,7 @@ int NetworkClient::client(const char *ip, int port) {
     }
 
     /*将套接字绑定到服务器的网络地址上*/
-    if (connect(client_sockfd, (struct sockaddr *) &remote_addr, sizeof(struct sockaddr)) < 0) {
+    if (connect(client_sockfd, (struct sockaddr *) &remote_addr, sizeof(remote_addr)) < 0) {
         perror("connect");
         return 1;
     }
@@ -182,7 +182,7 @@ int NetworkServer::server(int port) {
     }
 
     /*将套接字绑定到服务器的网络地址上*/
-    if (bind(sockfd, (struct sockaddr *) &my_addr, sizeof(struct sockaddr)) < 0) {
+    if (bind(sockfd, (struct sockaddr *) &my_addr, sizeof(my_addr)) < 0) {
         perror("bind");
         return 1;
     }
