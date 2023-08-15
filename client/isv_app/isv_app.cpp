@@ -73,6 +73,7 @@
 // can use pre-generated messages to verify the generation of
 // messages and the information flow.
 #include "sample_messages.h"
+#include "log.h"
 
 // 1--open   0--close
 #define experiment_enable (1)
@@ -388,6 +389,8 @@ int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output) {
 
     s[5] = steady_clock::now();
     if (algo.keygen3()) {
+        DBG(stderr, "Error: INTERNAL ERROR - keygen3 error in [%s]-[%d].",
+            __FUNCTION__, __LINE__);
         ret = -1;
         goto CLEANUP;
     }
@@ -524,6 +527,10 @@ int client_trace(NetworkClient networkClient) {
     int n;
     timeval *tv_list;
     char timeStr[128];
+    json j, j_node;
+    Proofs proofs;
+    std::vector<uint8_t> vec_prf;
+    uint8_t data[BUFSIZ];
 
     msg_size = sizeof(int);
     p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);
@@ -553,11 +560,23 @@ int client_trace(NetworkClient networkClient) {
     n = p_response->size / sizeof(timeval);
     tv_list = (timeval *) p_response->body;
 
-    fprintf(OUTPUT, "\nID: %d\n", IDSN);
-    for (int i = 0; i < n; ++i) {
-        getLocalTime(timeStr, sizeof(timeStr), tv_list[i]);
-        printf("<%d>: %s\n", i, timeStr);
+    j = json::parse(std::string((char *) p_response->body));
+    j_node = j.at("node");
+    j_node.at("prf").get_to(vec_prf);
+    // vec_prf -> data
+    data_size = vec_prf.size();
+    std::copy(vec_prf.begin(), vec_prf.end(), data);
+
+    proofs.deserialise(data);
+
+    if (!proofs.verify_proofs()) {
+        printf("Proofs is invalid!\n");
+        ret = -1;
+        goto CLEANUP;
     }
+
+    LOG_INFO << "Proofs is valid!";
+    LOG_INFO << "node: " << j_node.dump();
 
     CLEANUP:
     SAFE_FREE(p_request);

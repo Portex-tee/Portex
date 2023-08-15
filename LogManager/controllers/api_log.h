@@ -16,9 +16,7 @@ class log : public drogon::HttpController<log>
     // METHOD_ADD(log::your_method_name, "/{1}/{2}/list", Get); // path is /api/log/{arg1}/{arg2}/list
     // ADD_METHOD_TO(log::your_method_name, "/absolute/path/{1}/{2}/list", Get); // path is /absolute/path/{arg1}/{arg2}/list
 
-        METHOD_ADD(log::get_proof, "/proof/{hash}", Get);
-        METHOD_ADD(log::list, "/list", Get);
-        METHOD_ADD(log::table, "/table", Get);
+//        METHOD_ADD(log::get_proof, "/proof/{hash}", Get);
 
     METHOD_LIST_END
     // your declaration of processing function maybe like this:
@@ -29,11 +27,6 @@ class log : public drogon::HttpController<log>
                    std::function<void(const HttpResponsePtr &)> &&callback,
                    std::string string) const;
 
-    void list(const HttpRequestPtr &req,
-                std::function<void(const HttpResponsePtr &)> &&callback) const;
-
-    void table(const HttpRequestPtr &req,
-                std::function<void(const HttpResponsePtr &)> &&callback);
 
 };
 }

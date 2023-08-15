@@ -92,7 +92,7 @@ using json = nlohmann::json;
 using namespace std::chrono;
 
 
-const std::string out_dir = "~/experiments/PortexData/testing-data/";
+const std::string out_dir = "/root/experiments/PortexData/testing-data/";
 //std::string lambda_dir = out_dir + "lambda/lambda_" + std::to_string(qbits) + "_pkg.csv";
 //std::string sn_dir = out_dir + "N_SN/SN_" + std::to_string(N_SN) + "_pkg.csv";
 std::string test_file = out_dir + "test_pkg.csv";
@@ -632,7 +632,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (is_test) {
-        std::string file = out_dir + "time-KReq-PKG.csv";
+        std::string file = out_dir + "time-pkg-kreq.csv";
         ofstream.open(file);
         ofstream << "KReq.LogVerify,IBE.KGenPKG,KReq.SendPkey" << std::endl;
     }

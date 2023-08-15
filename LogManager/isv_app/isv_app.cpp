@@ -40,6 +40,7 @@
 #include <json.hpp>
 #include <drogon/HttpAppFramework.h>
 #include "ec_crypto.h"
+#include <chrono>
 
 // Needed for definition of remote attestation messages.
 #include "remote_attestation_result.h"
@@ -86,8 +87,20 @@
 
 #define ENCLAVE_PATH "build/enclave.signed.so"
 
+#define experiment_enable (1)
+
+const std::string out_dir = "/root/experiments/PortexData/testing-data/";
+std::ofstream ofs_kreq, ofs_trace;
+
 using json = nlohmann::json;
 using namespace drogon;
+using namespace std::chrono;
+typedef time_point<steady_clock> ts;
+
+// experiments vars
+const int n_trace = 3, n_kreq = 2;
+std::vector<microseconds> ts_trace[n_trace], ts_kreq[n_kreq];
+ts s[n_trace], e[n_trace];
 
 LogTree logTree;
 extern char sendbuf[BUFSIZ]; //数据传送的缓冲区
@@ -120,7 +133,7 @@ int lm_keyreq(const uint8_t *p_msg,
     gettimeofday(&tv, NULL);
 
     std::string j_str, ts;
-    int id, sn, idsn;
+    int id, sn;
 
     // parse json
     json json1;
@@ -144,11 +157,7 @@ int lm_keyreq(const uint8_t *p_msg,
     };
 
     // MT.Insert
-    j_str = j_node.dump();
-    std::cout << "jnode" << j_node << std::endl;
-    sha256(j_str, encodedHexStr);
-    ChronTreeT::Hash hash(encodedHexStr);
-    logTree.append(id, j_str, hash, proofs);
+    logTree.append(j_node, proofs);
 
     // Parse proofs to json
     msg2_size = proofs.serialise(data);
@@ -160,7 +169,10 @@ int lm_keyreq(const uint8_t *p_msg,
     };
 
     ir = json::to_bjdata(j_req);
+
+    s[1] = steady_clock::now();
     ecdsa_sign(ir, ir_sig, "param/lm-sign.pem");
+    e[1] = steady_clock::now();
 
     json j_body{
             {"ir",     j_req},
@@ -221,30 +233,40 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
     int ret = 0;
     uint8_t data[BUFSIZ];
     Proofs proofs;
+    LogNode logNode;
     std::string encodedHexStr;
     ra_samp_response_header_t *p_response = NULL;
     int data_size, msg2_size, recvlen;
-    std::vector<json> jv;
 
     timeval tv = {};
     gettimeofday(&tv, NULL);
 
-    int id = *((int *) p_msg);
+    int idsn = *((int *) p_msg);
 
+    std::string str_data;
     // log trace
-    logTree.trace(id, jv);
-    fprintf(OUTPUT, "\nID: %d\n", id);
-    for (auto &i: jv) {
-        std::cout << i.dump() << std::endl;
+    if (logTree.trace(idsn, logNode, proofs)) {
+        json j_node = logNode.node;
+        LOG_INFO << "trace: " << j_node.dump();
+
+
+        // Parse proofs to json
+        msg2_size = proofs.serialise(data);
+        auto vec_prf = std::vector<uint8_t>(data, data + msg2_size);
+
+        // construct response json
+        json j_data = {
+                {"prf", vec_prf},
+                {"node", j_node},
+        };
+        str_data = j_data.dump();
+        msg2_size = str_data.size() + 1;
+
+    } else {
+        str_data = "";
+        msg2_size = str_data.size() + 1;
     }
 
-    // construct response json
-    json j_data = {
-            {"id", id},
-            {"jv", jv}
-    };
-    std::string str_data = j_data.dump();
-    msg2_size = str_data.size() + 1;
 
     // construct response
     p_response = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t) + msg2_size);
@@ -276,21 +298,20 @@ void http_server() {
 
                          Json::Value data;
 
-                         for (auto & it : logTree.lexTree) {
-                             for (auto & it2 : it.second) {
-                                 Json::Reader reader;
-                                 Json::Value item2;
-                                 reader.parse(it2, item2);
-                                 data.append(item2);
-                             }
+                         for (auto &it: logTree.lexTree) {
+                             Json::Reader reader;
+                             Json::Value item2;
+                             reader.parse(it.second.node.dump(), item2);
+                             data.append(item2);
                          }
 
                          ret["data"] = data;
 
                          auto logList = ret;
                          if (logList["size"].asInt() > 0) {
-                             for(auto & it : logList["data"]) {
-                                 LOG_INFO << it["id"].asInt() << ' ' << it["sn"].asInt() << ' ' << it["timestamp"].asInt();
+                             for (auto &it: logList["data"]) {
+                                 LOG_INFO << it["id"].asInt() << ' ' << it["sn"].asInt() << ' '
+                                          << it["timestamp"].asInt();
                              }
                          }
 
@@ -317,7 +338,7 @@ int main(int argc, char *argv[]) {
     NetworkServer server;
     int lm_port = 22333;
     int pkg_port = 12333;
-    std::string pkg_ip = "2001:da8:201d:1107::c622";
+    std::string pkg_ip = "127.0.0.1";
     extern LogTree logTree;
     ra_samp_request_header_t *p_req;
     ra_samp_response_header_t **p_resp;
@@ -327,6 +348,9 @@ int main(int argc, char *argv[]) {
     Proofs proofs;
     std::string encodedHexStr;
     std::string srcStr;
+
+    std::string kreq_file = out_dir + "time-lm-kreq.csv";
+    std::string trace_file = out_dir + "time-lm-trace.csv";
 
     // todo: remove in release
     if (0) {
@@ -359,6 +383,11 @@ int main(int argc, char *argv[]) {
     fprintf(OUTPUT, "start socket....\n");
     server.server(lm_port);
 
+    ofs_kreq.open(kreq_file);
+    ofs_trace.open(trace_file);
+    ofs_kreq << "KReq.LM, KReq.LogGen" << std::endl;
+    ofs_trace << "Trace" << std::endl;
+
     do {
         bool is_recv = true;
         do {
@@ -385,12 +414,32 @@ int main(int argc, char *argv[]) {
                             goto CLEANUP;
                         }
 
+                        s[0] = steady_clock::now();
+
                         lm_keyreq((uint8_t *) p_req + sizeof(ra_samp_request_header_t),
                                   p_req->size,
                                   enclave_id,
                                   OUTPUT,
                                   client,
                                   server);
+
+                        e[0] = steady_clock::now();
+
+                        if (experiment_enable) {
+                            for (int i = 0; i < n_kreq; ++i) {
+                                ts_kreq[i].emplace_back(duration_cast<microseconds>(e[i] - s[i]));
+                            }
+
+                            // output ts_kreq to csv file
+                            for (int i = 0; i < n_kreq; ++i) {
+                                ofs_kreq << ts_kreq[i].back().count();
+                                if (i != n_kreq - 1) {
+                                    ofs_kreq << ", ";
+                                } else {
+                                    ofs_kreq << std::endl;
+                                }
+                            }
+                        }
 
                         SAFE_FREE(p_req);
                         is_recv = false;
