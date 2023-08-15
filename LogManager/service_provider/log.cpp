@@ -95,8 +95,7 @@ bool Proofs::verify_proofs() {
     return path->verify(root);
 }
 
-
-int LogTree::append(json &j_node, Proofs &prf) {
+int LogTree::append(int idsn, json &j_node, Proofs &prf) {
     LogNode node;
     node.node = j_node;
 
@@ -105,10 +104,6 @@ int LogTree::append(json &j_node, Proofs &prf) {
     sha256(j_str, encodedHexStr);
     ChronTreeT::Hash hash(encodedHexStr);
     node.hash = hash;
-
-    int id = j_node.at("id").get_to(id);
-    int sn = j_node.at("sn").get_to(sn);
-    int idsn = get_idsn(id, sn);
 
     int ret = 0;
 

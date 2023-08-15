@@ -32,6 +32,7 @@
 // This sample is confined to the communication between a SGX client platform
 // and an ISV Application Server.
 
+#include "aibe.h"
 #include "ra.h"
 #include "log.h"
 #include <stdio.h>
@@ -65,7 +66,6 @@
 
 // Needed to calculate keys
 
-#include "../service_provider/aibe.h"
 
 #define LENOFMSE 1024
 
@@ -157,7 +157,7 @@ int lm_keyreq(const uint8_t *p_msg,
     };
 
     // MT.Insert
-    logTree.append(j_node, proofs);
+    logTree.append(get_idsn(id, sn), j_node, proofs);
 
     // Parse proofs to json
     msg2_size = proofs.serialise(data);

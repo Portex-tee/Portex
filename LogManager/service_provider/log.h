@@ -13,7 +13,6 @@
 #include <chrono>
 #include <sys/time.h>
 #include "json.hpp"
-#include "aibe.h"
 
 #include <openssl/sha.h>
 
@@ -56,7 +55,7 @@ public:
     ChronTreeT chronTree;
     std::map<int, LogNode> lexTree;
 
-    int append(json &node, Proofs &prf);
+    int append(int idsn, json &node, Proofs &prf);
 
     int trace(int idsn, LogNode &logNode, Proofs &prf);
 };

@@ -1,5 +1,9 @@
 #include "log.h"
 
+int get_id_sn(int tid, int tsn) {
+    return (tid << 12) + tsn;
+}
+
 void sha256(const std::string &srcStr, std::string &encodedHexStr) {
     unsigned char mdStr[33] = {0};
     SHA256((const unsigned char *) srcStr.c_str(), srcStr.length(), mdStr);// 调用sha256哈希
@@ -108,7 +112,7 @@ int LogTree::append(json &j_node, Proofs &prf) {
 
     int id = j_node.at("id").get_to(id);
     int sn = j_node.at("sn").get_to(sn);
-    int idsn = get_idsn(id, sn);
+    int idsn = get_id_sn(id, sn);
 
     int ret = 0;
 
