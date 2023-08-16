@@ -153,7 +153,14 @@ int NetworkEnd::SendTo(int len) {
 int NetworkEnd::RecvFrom() {
     /*接收服务端的数据*/
     int len = 0;
-    len = recv(client_sockfd, recvbuf, BUFSIZ, 0);
+//    receive all data
+    while (len < BUFSIZ) {
+        int ret = recv(client_sockfd, recvbuf + len, BUFSIZ - len, 0);
+        if (ret <= 0) {
+            break;
+        }
+        len += ret;
+    }
     if (len > 0)
         recvbuf[len] = 0;
     return len;

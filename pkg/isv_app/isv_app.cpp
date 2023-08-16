@@ -97,8 +97,8 @@ const std::string out_dir = "/root/experiments/PortexData/testing-data/";
 //std::string sn_dir = out_dir + "N_SN/SN_" + std::to_string(N_SN) + "_pkg.csv";
 std::string test_file = out_dir + "test_pkg.csv";
 std::ofstream ofstream;
-const bool is_test = true;
 
+int experiment_enable = 0;
 int rbits = 160;
 int qbits = (1 << 8); // lambda
 
@@ -450,7 +450,7 @@ int pkg_keyreq(const uint8_t *p_msg,
 
     DBG(stdout, "\nKeyreq Done.");
 
-    if (is_test) {
+    if (experiment_enable) {
         for (int j = 0; j < 3; ++j) {
             t[j] = duration_cast<microseconds>(e[j] - s[j]);
             ofstream << t[j].count();
@@ -564,6 +564,12 @@ int pkg_keygen(const ra_samp_request_header_t *p_msg,
 
 
 int main(int argc, char *argv[]) {
+
+//    if args has -t, set experiment_enable to 1
+    if (argc > 1 && strcmp(argv[1], "-t") == 0) {
+        experiment_enable = 1;
+    }
+
     int ret = 0;
     NetworkServer server;
     AibeAlgo aibeAlgo;
@@ -631,7 +637,7 @@ int main(int argc, char *argv[]) {
         system(buff);
     }
 
-    if (is_test) {
+    if (experiment_enable) {
         std::string file = out_dir + "time-pkg-kreq.csv";
         ofstream.open(file);
         ofstream << "KReq.LogVerify,IBE.KGenPKG,KReq.SendPkey" << std::endl;

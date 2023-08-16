@@ -42,6 +42,7 @@
 #include <drogon/HttpAppFramework.h>
 #include "ec_crypto.h"
 #include <chrono>
+#include <csignal>
 
 // Needed for definition of remote attestation messages.
 #include "remote_attestation_result.h"
@@ -87,7 +88,7 @@
 
 #define ENCLAVE_PATH "build/enclave.signed.so"
 
-#define experiment_enable (1)
+int experiment_enable(0);
 
 const std::string out_dir = "/root/experiments/PortexData/testing-data/";
 std::ofstream ofs_kreq, ofs_trace;
@@ -158,6 +159,7 @@ int lm_keyreq(const uint8_t *p_msg,
 
     // MT.Insert
     logTree.append(get_idsn(id, sn), j_node, proofs);
+    LOG_INFO << "insert: id=" << id << ", sn=" << sn << ", idsn=" << get_idsn(id, sn);
 
     // Parse proofs to json
     msg2_size = proofs.serialise(data);
@@ -242,6 +244,7 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
     gettimeofday(&tv, NULL);
 
     int idsn = *((int *) p_msg);
+    LOG_INFO << "idsn: " << idsn;
 
     std::string str_data;
     // log trace
@@ -261,6 +264,7 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
         };
         str_data = j_data.dump();
         msg2_size = str_data.size() + 1;
+        LOG_INFO << "response: size:" << msg2_size << "; Body size: " << str_data.length();
 
     } else {
         str_data = "";
@@ -282,6 +286,15 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
     return ret;
 }
 
+static void signalHandler(int signum)
+{
+    // 处理 SIGINT 信号
+    LOG_INFO << "接收到信号" << signum;
+
+    //调用 app().quit()以退出Drogin应用程序
+    exit(0);
+}
+
 void http_server() {
     drogon::app().loadConfigFile("./config.json");
 
@@ -290,6 +303,7 @@ void http_server() {
                     ("/service",
                      [=](const drogon::HttpRequestPtr &req,
                          std::function<void(const drogon::HttpResponsePtr &)> &&callback) {
+                        LOG_INFO << "access /service";
 
                          Json::Value ret;
                          ret["code"] = 0;
@@ -325,11 +339,17 @@ void http_server() {
 
 //    app().enableDynamicViewsLoading({"views/"});
 
+    LOG_INFO << "http server start";
+
+    drogon::app().getLoop()->runAfter(0.0, [] { signal(SIGINT, signalHandler); });
     drogon::app().run();
 }
 
 int main(int argc, char *argv[]) {
-
+//    if args has -t, set experiment_enable to 1
+    if (argc > 1 && strcmp(argv[1], "-t") == 0) {
+        experiment_enable = 1;
+    }
 
     int ret = 0;
     sgx_enclave_id_t enclave_id = 0;
@@ -349,8 +369,7 @@ int main(int argc, char *argv[]) {
     std::string encodedHexStr;
     std::string srcStr;
 
-    std::string kreq_file = out_dir + "time-lm-kreq.csv";
-    std::string trace_file = out_dir + "time-lm-trace.csv";
+    std::string kreq_file, trace_file;
 
     // todo: remove in release
     if (0) {
@@ -383,10 +402,14 @@ int main(int argc, char *argv[]) {
     fprintf(OUTPUT, "start socket....\n");
     server.server(lm_port);
 
-    ofs_kreq.open(kreq_file);
-    ofs_trace.open(trace_file);
-    ofs_kreq << "KReq.LM, KReq.LogGen" << std::endl;
-    ofs_trace << "Trace" << std::endl;
+    if(experiment_enable) {
+        kreq_file = out_dir + "time-lm-kreq.csv";
+        trace_file = out_dir + "time-lm-trace.csv";
+        ofs_kreq.open(kreq_file);
+        ofs_trace.open(trace_file);
+        ofs_kreq << "KReq.LM, KReq.LogGen" << std::endl;
+        ofs_trace << "Trace" << std::endl;
+    }
 
     do {
         bool is_recv = true;
@@ -447,7 +470,7 @@ int main(int argc, char *argv[]) {
 
 
                     case TYPE_LM_TRACE:
-                        fprintf(OUTPUT, "LM key request\n");
+                        fprintf(OUTPUT, "LM trace request\n");
 
                         lm_trace((const ra_samp_request_header_t *) ((uint8_t *) p_req +
                                                                      sizeof(ra_samp_request_header_t)),
@@ -484,6 +507,7 @@ int main(int argc, char *argv[]) {
 
     CLEANUP:
 
+    app().quit();
     terminate(client);
     client.Cleanupsocket();
     sgx_destroy_enclave(enclave_id);

@@ -76,7 +76,6 @@
 #include "log.h"
 
 // 1--open   0--close
-#define experiment_enable (1)
 #define debug_enable (1)
 #define DBG(...)      \
     if (debug_enable) \
@@ -86,12 +85,14 @@
     (element_fprintf(__VA_ARGS__))
 #define _T(x) x
 
+int experiment_enable(0);
+
 using json = nlohmann::json;
 using namespace std::chrono;
 using namespace drogon;
 typedef time_point<steady_clock> ts;
 
-int loop = 100;
+int loop = 10;
 int pkg_port = 12333;
 int lm_port = 22333;
 std::string lm_ip = "121.41.111.120";
@@ -99,37 +100,47 @@ const std::string out_dir = "/root/experiments/PortexData/testing-data/";
 //std::string lambda_file = out_dir + "lambda/lambda_" + std::to_string(qbits) + "_client.csv";
 //std::string sn_file = out_dir + "N_SN/SN_" + std::to_string(N_SN) + "_client.csv";
 std::string test_file = out_dir + "test_client.csv";
-std::ofstream ofs_enc, ofs_dec;
+std::ofstream ofs_enc, ofs_dec, ofs_trace;
 
 FILE *OUTPUT = stdout;
 AibeAlgo aibeAlgo;
 NetworkClient client;
 
 // experiments vars
-const int n_enc = 3, n_dec = 8;
-std::vector<microseconds> ts_enc[n_enc], ts_dec[n_dec];
+const int n_enc = 3, n_dec = 8, n_trace = 2;
+std::vector<microseconds> ts_enc[n_enc], ts_dec[n_dec], ts_trace[n_trace];
 ts s[n_dec], e[n_dec];
 
 void getLocalTime(char *timeStr, int len, struct timeval tv);
 
 int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output);
 
-std::string client_encrypt(AibeAlgo algo, int id, const std::string &message, bool enable_timer = true);
+std::string client_encrypt(AibeAlgo &algo, int id, const std::string &message, bool enable_timer = true);
 
-std::string client_decrypt(AibeAlgo algo, const std::string &req_str, NetworkClient networkClient);
+std::string client_decrypt(AibeAlgo &algo, const std::string &req_str, NetworkClient networkClient, bool enable_timer = true);
 
 int client_trace(NetworkClient networkClient);
 
-int client_inspect(const std::string &dk2_path, AibeAlgo &algo);
+int client_inspect(int idsn, const std::string &dk2_path, AibeAlgo &algo);
 
 void exp_enc();
 
 void exp_dec();
 
+void exp_trace();
+
+void exp_tot();
+
 int main(int argc, char *argv[]) {
     //    printf("%d\n", sizeof(uint8_t));
     int ret = 0;
 //    sgx_enclave_id_t enclave_id = 0;
+
+//    read args from command line, one integer for the number of loops
+    if (argc > 1) {
+        loop = atoi(argv[1]);
+        experiment_enable = 1;
+    }
 
     aibeAlgo.id = ID;
     aibeAlgo.sn = SN;
@@ -182,18 +193,17 @@ int main(int argc, char *argv[]) {
 
     if (!experiment_enable) {
         try {
-            LOG_INFO << "Client running on 0.0.0.0:18080";
+            LOG_INFO << "Client running on 0.0.0.0:8080";
             drogon::app().loadConfigFile("./config.json");
             drogon::app().run();
         } catch (const std::exception &e) {
             LOG_ERROR << e.what();
         }
     } else {
-//        experiment of Enc
-        exp_enc();
-
-//        experiment of KeyReq + Dec
-        exp_dec();
+//        exp_enc(); // experiment of Enc
+//        exp_dec(); // experiment of KeyReq + Dec
+//        exp_trace(); // experiment of Trace
+        exp_tot();
     }
 
 
@@ -206,6 +216,75 @@ int main(int argc, char *argv[]) {
     DBG(OUTPUT, "Success Clean Up A-IBE \n");
 
     return ret;
+}
+
+void exp_tot() {
+    {
+        std::string enc_file = out_dir + "time-client-enc.csv";
+        ofs_enc.open(enc_file);
+        ofs_enc << "Portex.Enc(us)," // 0
+                   "Enc.Setup(us)," // 1
+                   "IBE.Enc(us)"
+                << std::endl;
+
+        std::string dec_file = out_dir + "time-client-dec.csv";
+        ofs_dec.open(dec_file);
+        ofs_dec << "KeyRequest(us)," // 0
+                   "Portex.Dec(us)," // 1
+                   "IBE.KGenC1," // 2
+                   "KReq.SendReq," // 3
+                   "KReq.Verify," // 4
+                   "IBE.KGenC2," // 5
+                   "Dec.Setup(us)," // 6
+                   "IBE.Dec(us)" // 7
+                << std::endl;
+
+        std::string trace_file = out_dir + "time-client-trace.csv";
+        ofs_trace.open(trace_file);
+        ofs_trace << "Portex.DTrace(us)," // 0
+                     "Portex.PTrace(us)" // 1
+                  << std::endl;
+    }
+
+    std::string req_str;
+    for (int i = 0; i < loop; ++i) {
+        req_str = client_encrypt(aibeAlgo, ID, "Hello World!");
+        client_decrypt(aibeAlgo, req_str, client);
+
+        s[0] = steady_clock::now();
+        client_trace(client);
+        e[0] = steady_clock::now();
+        s[1] = steady_clock::now();
+        client_inspect(aibeAlgo.idsn(), dk_path, aibeAlgo);
+        e[1] = steady_clock::now();
+
+        if (experiment_enable) {
+            for (int j = 0; j < n_trace; ++j) {
+                ts_trace[j].emplace_back(duration_cast<microseconds>(e[j] - s[j]));
+            }
+        }
+
+        ofs_enc << ts_enc[0][i].count() << ","
+                << ts_enc[1][i].count() << ","
+                << ts_enc[2][i].count() << std::endl;
+        ofs_dec << ts_dec[0][i].count() << ","
+                << ts_dec[1][i].count() << ","
+                << ts_dec[2][i].count() << ","
+                << ts_dec[3][i].count() << ","
+                << ts_dec[4][i].count() << ","
+                << ts_dec[5][i].count() << ","
+                << ts_dec[6][i].count() << ","
+                << ts_dec[7][i].count() << std::endl;
+        ofs_trace << ts_trace[0][i].count() << ","
+                  << ts_trace[1][i].count() << std::endl;
+
+//        sleep for 1 milliseconds
+
+//        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+//    for (int i = 0; i < loop; ++i) {
+//    }
 }
 
 void exp_enc() {
@@ -261,6 +340,37 @@ void exp_dec() {
     }
 }
 
+
+void exp_trace() {
+    std::string req_str = client_encrypt(aibeAlgo, ID, "Hello World!", false);
+    client_decrypt(aibeAlgo, req_str, client, false);
+
+    std::string trace_file = out_dir + "time-client-trace.csv";
+    ofs_trace.open(trace_file);
+    ofs_trace << "Portex.DTrace(us)," // 0
+                 "Portex.PTrace(us)" // 1
+              << std::endl;
+
+    for (int i = 0; i < loop; ++i) {
+        s[0] = steady_clock::now();
+        client_trace(client);
+        e[0] = steady_clock::now();
+        s[1] = steady_clock::now();
+        client_inspect(aibeAlgo.idsn(), dk_path, aibeAlgo);
+        e[1] = steady_clock::now();
+
+        if (experiment_enable) {
+            for (int j = 0; j < n_trace; ++j) {
+                ts_trace[j].emplace_back(duration_cast<microseconds>(e[j] - s[j]));
+            }
+        }
+    }
+
+    for (int i = 0; i < loop; ++i) {
+        ofs_trace << ts_trace[0][i].count() << ","
+                  << ts_trace[1][i].count() << std::endl;
+    }
+}
 
 void getLocalTime(char *timeStr, int len, struct timeval tv) {
     struct tm *ptm;
@@ -409,7 +519,7 @@ int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output) {
     return ret;
 }
 
-std::string client_encrypt(AibeAlgo algo, int id, const std::string &message, bool enable_timer) {
+std::string client_encrypt(AibeAlgo &algo, int id, const std::string &message, bool enable_timer) {
 //    clear s, e
     for (int i = 0; i < n_enc; ++i) {
         s[i] = e[i] = steady_clock::now();
@@ -453,7 +563,7 @@ std::string client_encrypt(AibeAlgo algo, int id, const std::string &message, bo
     return resp_str;
 }
 
-std::string client_decrypt(AibeAlgo algo, const std::string &req_str, NetworkClient networkClient) {
+std::string client_decrypt(AibeAlgo &algo, const std::string &req_str, NetworkClient networkClient, bool enable_timer) {
 
 //    clear s, e
     for (int i = 0; i < n_enc; ++i) {
@@ -506,7 +616,7 @@ std::string client_decrypt(AibeAlgo algo, const std::string &req_str, NetworkCli
 
     e[1] = steady_clock::now();
 
-    if (experiment_enable) {
+    if (experiment_enable && enable_timer) {
         for (int i = 0; i < n_dec; ++i) {
             ts_dec[i].emplace_back(duration_cast<microseconds>(e[i] - s[i]));
         }
@@ -517,6 +627,7 @@ std::string client_decrypt(AibeAlgo algo, const std::string &req_str, NetworkCli
 
 int client_trace(NetworkClient networkClient) {
 
+    std::string str;
     int ret = 0;
     ra_samp_request_header_t *p_request = NULL;
     ra_samp_response_header_t *p_response = NULL;
@@ -532,20 +643,40 @@ int client_trace(NetworkClient networkClient) {
     std::vector<uint8_t> vec_prf;
     uint8_t data[BUFSIZ];
 
+    if (networkClient.client(lm_ip.c_str(), lm_port) != 0) {
+        LOG_INFO << "Connect Server Error!";
+        ret = -1;
+    }
+
     msg_size = sizeof(int);
     p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);
     p_request->size = msg_size;
     p_request->type = TYPE_LM_TRACE;
-    *((int *) p_request->body) = IDSN;
+    *((int *) p_request->body) = aibeAlgo.idsn();
+    LOG_INFO << "ID: " << aibeAlgo.id << " SN: " << aibeAlgo.sn << " IDSN: " << aibeAlgo.idsn();
 
     memset(networkClient.sendbuf, 0, BUFSIZ);
     memcpy(networkClient.sendbuf, p_request, sizeof(ra_samp_request_header_t) + msg_size);
-    networkClient.SendTo(sizeof(ra_samp_request_header_t) + msg_size);
+    int status = networkClient.SendTo(sizeof(ra_samp_request_header_t) + msg_size);
+    if (status < 0) {
+        DBG(stderr, "Error, sendto error[%s]-[%d].\n", __FUNCTION__, __LINE__);
+        LOG_INFO << status;
+        ret = -1;
+        goto CLEANUP;
+    }
 
     // recv
     recvlen = networkClient.RecvFrom();
+    if (recvlen < 0) {
+        DBG(stderr, "Error, recvfrom error[%s]-[%d].\n", __FUNCTION__, __LINE__);
+        ret = -1;
+        goto CLEANUP;
+    }
+
     p_response = (ra_samp_response_header_t *) malloc(
             sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) networkClient.recvbuf)->size);
+
+    LOG_INFO << "Recvlen: " << recvlen << "; size: " << p_response->size;
 
     memcpy(p_response, networkClient.recvbuf, recvlen);
     if ((p_response->type != TYPE_LM_TRACE)) {
@@ -555,14 +686,21 @@ int client_trace(NetworkClient networkClient) {
         ret = -1;
         goto CLEANUP;
     }
-    DBG(OUTPUT, "Log list received");
 
-    n = p_response->size / sizeof(timeval);
-    tv_list = (timeval *) p_response->body;
+    if (p_response->size <= 1) {
+        // log not found
+        LOG_INFO << "Log not found";
+        ret = -1;
+        goto CLEANUP;
+    }
 
-    j = json::parse(std::string((char *) p_response->body));
+    LOG_INFO << "Log node received";
+
+    str = std::string((char *) p_response->body);
+    LOG_INFO << "\nReceive Log json. Size: " << p_response->size << "; recv size: " << recvlen;
+    j = json::parse(str);
     j_node = j.at("node");
-    j_node.at("prf").get_to(vec_prf);
+    j.at("prf").get_to(vec_prf);
     // vec_prf -> data
     data_size = vec_prf.size();
     std::copy(vec_prf.begin(), vec_prf.end(), data);
@@ -584,11 +722,11 @@ int client_trace(NetworkClient networkClient) {
     return ret;
 }
 
-int client_inspect(const std::string &dk2_path, AibeAlgo &algo) {
+int client_inspect(int idsn, const std::string &dk2_path, AibeAlgo &algo) {
     algo.dk_load();
     algo.dk2_load(dk2_path);
     algo.mpk_load();
-    algo.set_Hz(IDSN);
+    algo.set_Hz(idsn);
 
     if (!algo.dk_verify()) {
         printf("Client decrypt key is invalid!\n");
@@ -611,4 +749,5 @@ int client_inspect(const std::string &dk2_path, AibeAlgo &algo) {
     printf("The same key detected!\n");
     return 0;
 }
+
 
