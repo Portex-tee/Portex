@@ -28,7 +28,7 @@ set(LDS isv_enclave/isv_enclave.lds)
 set(E_SRCS isv_enclave/isv_enclave.cpp)
 
 # libs
-set(PROJ_LIBS -lcryptopp -lgmp -lpbc service_provider -lm -lc -lstdc++)
+set(PROJ_LIBS -lcryptopp -lpbc -lgmp service_provider -lm -lc -lstdc++)
 
 file(GLOB U_SRCS service_provider/*.cpp)
 add_library(service_provider STATIC ${U_SRCS})

@@ -220,6 +220,7 @@ int lm_keyreq(const uint8_t *p_msg,
 //    assert(proofs.path->verify(proofs.root));
 
     CLEANUP:
+
     SAFE_FREE(p_request);
     SAFE_FREE(p_response);
     return ret;
@@ -431,6 +432,7 @@ int main(int argc, char *argv[]) {
                         fprintf(OUTPUT, "LM key request\n");
 
                         // SOCKET: connect to server
+
                         if (client.client(pkg_ip.c_str(), pkg_port) != 0) {
                             fprintf(OUTPUT, "Connect Server Error, Exit!\n");
                             ret = -1;

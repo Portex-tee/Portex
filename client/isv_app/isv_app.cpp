@@ -322,7 +322,7 @@ void exp_dec() {
                "Dec.Setup(us)," // 6
                "IBE.Dec(us)" // 7
             << std::endl;
-    
+
     ts_dec->clear();
     for (int i = 0; i < loop; ++i) {
         client_decrypt(aibeAlgo, req_str, client);
@@ -570,7 +570,6 @@ std::string client_decrypt(AibeAlgo &algo, const std::string &req_str, NetworkCl
         s[i] = e[i] = steady_clock::now();
     }
 
-    s[0] = steady_clock::now();
 
     std::vector<uint8_t> ct;
     std::string resp_str;
@@ -583,11 +582,12 @@ std::string client_decrypt(AibeAlgo &algo, const std::string &req_str, NetworkCl
     std::copy(ct.begin(), ct.end(), ct_buf);
     int ret = 0;
 
-
     if (networkClient.client(lm_ip.c_str(), lm_port) != 0) {
         resp_str = "Connect Server Error!";
         ret = -1;
     }
+
+    s[0] = steady_clock::now();
 
     if (ret == 0) {
         algo.mpk_load();
@@ -647,6 +647,8 @@ int client_trace(NetworkClient networkClient) {
         LOG_INFO << "Connect Server Error!";
         ret = -1;
     }
+
+    s[0] = steady_clock::now();
 
     msg_size = sizeof(int);
     p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg_size);

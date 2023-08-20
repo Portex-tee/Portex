@@ -138,9 +138,10 @@ int NetworkClient::client(const char *ip, int port) {
     }
 
     /*将套接字绑定到服务器的网络地址上*/
-    if (connect(client_sockfd, (struct sockaddr *) &remote_addr, sizeof(remote_addr)) < 0) {
+    while (connect(client_sockfd, (struct sockaddr *) &remote_addr, sizeof(remote_addr)) < 0) {
         perror("connect");
-        return 1;
+//        wait 1 second
+        sleep(1);
     }
     printf("connected to server\n");
     return 0;
@@ -180,9 +181,6 @@ int NetworkServer::server(int port) {
         perror("socket");
         return 1;
     }
-
-    int j = 1;
-    setsockopt(sockfd,SOL_SOCKET,SO_REUSEADDR,&j,sizeof(j));
 
     /*将套接字绑定到服务器的网络地址上*/
     if (bind(sockfd, (struct sockaddr *) &my_addr, sizeof(my_addr)) < 0) {
