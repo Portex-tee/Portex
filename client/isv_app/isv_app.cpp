@@ -582,6 +582,7 @@ std::string client_decrypt(AibeAlgo &algo, const std::string &req_str, NetworkCl
     std::copy(ct.begin(), ct.end(), ct_buf);
     int ret = 0;
 
+    close(networkClient.sockfd);
     if (networkClient.client(lm_ip.c_str(), lm_port) != 0) {
         resp_str = "Connect Server Error!";
         ret = -1;
@@ -643,6 +644,7 @@ int client_trace(NetworkClient networkClient) {
     std::vector<uint8_t> vec_prf;
     uint8_t data[BUFSIZ];
 
+    close(networkClient.sockfd);
     if (networkClient.client(lm_ip.c_str(), lm_port) != 0) {
         LOG_INFO << "Connect Server Error!";
         ret = -1;

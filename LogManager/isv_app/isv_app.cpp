@@ -378,7 +378,9 @@ int main(int argc, char *argv[]) {
         ecdsa_kgen("../pkg/param/lm-verify.pem", "param/lm-sign.pem");
     }
 
-    std::thread t1(http_server);
+    if (!experiment_enable) {
+        std::thread t1(http_server);
+    }
 
     int launch_token_update = 0;
     sgx_launch_token_t launch_token = {0};
@@ -433,6 +435,7 @@ int main(int argc, char *argv[]) {
 
                         // SOCKET: connect to server
 
+                        close(client.sockfd);
                         if (client.client(pkg_ip.c_str(), pkg_port) != 0) {
                             fprintf(OUTPUT, "Connect Server Error, Exit!\n");
                             ret = -1;
