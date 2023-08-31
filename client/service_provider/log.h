@@ -11,6 +11,7 @@
 #include <map>
 #include <vector>
 #include <chrono>
+#include <iomanip>
 #include <sys/time.h>
 #include "json.hpp"
 
@@ -26,7 +27,15 @@ typedef struct _log_header_t {
 
 void sha256(const std::string &srcStr, std::string &encodedHexStr);
 
-std::string get_timestamp(timeval &tv);
+std::string get_timestamp();
+
+
+std::string get_future_timestamp(int seconds);
+
+
+std::chrono::system_clock::time_point parse_timestamp(const std::string& timestamp);
+
+bool compare_timestamps(const std::string& timestamp1, const std::string& timestamp2);
 
 class Proofs {
 public:
@@ -55,7 +64,7 @@ public:
     ChronTreeT chronTree;
     std::map<int, LogNode> lexTree;
 
-    int append(json &node, Proofs &prf);
+    int append(int idsn, json &node, Proofs &prf);
 
     int trace(int idsn, LogNode &logNode, Proofs &prf);
 };

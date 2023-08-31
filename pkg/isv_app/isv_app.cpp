@@ -410,6 +410,7 @@ int pkg_keyreq(const uint8_t *p_msg,
     ecdsa_sign(vec_ct, vec_pkey_sig, "param/pkg-sign.pem");
 
     json j_res{
+            {"status", 0},
             {"pkey_ct", vec_ct},
             {"sig",  vec_pkey_sig}
     };

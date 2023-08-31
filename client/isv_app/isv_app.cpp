@@ -113,9 +113,9 @@ ts s[n_dec], e[n_dec];
 
 void getLocalTime(char *timeStr, int len, struct timeval tv);
 
-int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output);
+int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, json &json, FILE *output);
 
-std::string client_encrypt(AibeAlgo &algo, int id, const std::string &message, bool enable_timer = true);
+std::string client_encrypt(AibeAlgo &algo, int id, int sec, const std::string &message, bool enable_timer = true);
 
 std::string client_decrypt(AibeAlgo &algo, const std::string &req_str, NetworkClient networkClient, bool enable_timer = true);
 
@@ -166,16 +166,18 @@ int main(int argc, char *argv[]) {
             });
 
     // drogon add encrypt handler, the parameter contains an integer id and a message. The response is a string that dumped from a json structure
-    app().registerHandler("/encrypt?id={user-id}&message={message}", [&](const HttpRequestPtr &req,
+    app().registerHandler("/encrypt?id={user-id}&message={message}&seconds={seconds}", [&](const HttpRequestPtr &req,
                                                                          std::function<void(
                                                                                  const HttpResponsePtr &)> &&callback,
                                                                          const int &id,
-                                                                         const std::string &message) {
+                                                                         const std::string &message,
+                                                                         const int &seconds) {
 
         int ct_size;
         auto resp = HttpResponse::newHttpResponse();
-        auto resp_str = client_encrypt(aibeAlgo, id, message);
+        auto resp_str = client_encrypt(aibeAlgo, id, seconds, message);
         resp->setBody(resp_str);
+        resp->addHeader("Access-Control-Allow-Origin", "*");
         callback(resp);
     });
 
@@ -187,6 +189,7 @@ int main(int argc, char *argv[]) {
         std::string req_str = req->body().data();
         std::string resp_str = client_decrypt(aibeAlgo, req_str, client);
         resp->setBody(resp_str);
+        resp->addHeader("Access-Control-Allow-Origin", "*");
         callback(resp);
     });
 
@@ -248,7 +251,7 @@ void exp_tot() {
 
     std::string req_str;
     for (int i = 0; i < loop; ++i) {
-        req_str = client_encrypt(aibeAlgo, ID, "Hello World!");
+        req_str = client_encrypt(aibeAlgo, ID, 0, "Hello World!");
         client_decrypt(aibeAlgo, req_str, client);
 
         s[0] = steady_clock::now();
@@ -297,7 +300,7 @@ void exp_enc() {
 
     ts_enc->clear();
     for (int i = 0; i < loop; ++i) {
-        client_encrypt(aibeAlgo, ID, "Hello World!");
+        client_encrypt(aibeAlgo, ID, 0, "Hello World!");
     }
     // output ts_enc to csv file
     for (int i = 0; i < loop; ++i) {
@@ -310,7 +313,7 @@ void exp_enc() {
 
 void exp_dec() {
 
-    std::string req_str = client_encrypt(aibeAlgo, ID, "Hello World!", false);
+    std::string req_str = client_encrypt(aibeAlgo, ID, 0, "Hello World!", false);
     std::string dec_file = out_dir + "time-client-dec.csv";
     ofs_dec.open(dec_file);
     ofs_dec << "KeyRequest(us)," // 0
@@ -342,7 +345,7 @@ void exp_dec() {
 
 
 void exp_trace() {
-    std::string req_str = client_encrypt(aibeAlgo, ID, "Hello World!", false);
+    std::string req_str = client_encrypt(aibeAlgo, ID, 0, "Hello World!", false);
     client_decrypt(aibeAlgo, req_str, client, false);
 
     std::string trace_file = out_dir + "time-client-trace.csv";
@@ -383,9 +386,10 @@ void getLocalTime(char *timeStr, int len, struct timeval tv) {
     sprintf(timeStr, "%s.%03ld", timeStr, milliseconds);
 }
 
-int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output) {
+int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, json &j_header, FILE *output) {
 
     int ret = 0;
+    bool is_valid;
     ra_samp_request_header_t *p_request = NULL;
     ra_samp_response_header_t *p_response = NULL;
     int recvlen = 0;
@@ -394,23 +398,17 @@ int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output) {
     int msg_size;
     std::string msg_body;
     std::string sig, str_idsn;
-    std::vector<uint8_t> vec_pms, vec_idsn, vec_sig, vec_pkey, vec_pkey_sig, vec_ct;
+    std::vector<uint8_t> vec_pms, vec_pkey, vec_pkey_sig, vec_ct;
 
     json j_res;
 
     uint8_t p_data[LENOFMSE] = {0};
-
-    // get idsn signature
-    str_idsn = std::to_string(algo.idsn());
-    vec_idsn = std::vector<uint8_t>(str_idsn.begin(), str_idsn.end());
-
 
     // get R and put into jason
     s[2] = steady_clock::now();
     algo.keygen1(algo.idsn());
     s[3] = e[2] = steady_clock::now();
 
-    ecdsa_sign(vec_idsn, vec_sig, "param/client-sign.pem");
 
     data_size = algo.size_comp_G1 * 2;
     element_to_bytes_compressed(p_data, algo.R);
@@ -426,9 +424,7 @@ int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output) {
 
     // construct json
     json json1 = {
-            {"id",  algo.id},
-            {"sn",  algo.sn},
-            {"sig", vec_sig},
+            {"header", j_header},
             {"pms", vec_pms}};
     msg_body = json1.dump();
 
@@ -461,11 +457,19 @@ int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output) {
         goto CLEANUP;
     }
 
-    if (p_response->status[1]) {
-        DBG(stderr, "Error: LM ERROR - recv empty response in [%s]-[%d].",
+    if (p_response->status[0]) {
+        DBG(stderr, "Error: LM ERROR - Decrypt Time error in [%s]-[%d].",
             __FUNCTION__, __LINE__);
         printf("%d\n", p_response->size);
-        ret = -1;
+        ret = -2;
+        goto CLEANUP;
+    }
+
+    if (p_response->status[1]) {
+        DBG(stderr, "Error: PKG ERROR - recv empty response in [%s]-[%d].",
+            __FUNCTION__, __LINE__);
+        printf("%d\n", p_response->size);
+        ret = -3;
         goto CLEANUP;
     }
 
@@ -475,9 +479,9 @@ int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output) {
     j_res.at("pkey_ct").get_to(vec_ct);
     j_res.at("sig").get_to(vec_pkey_sig);
 
-    ret = ecdsa_verify(vec_ct, vec_pkey_sig, "./param/pkg-verify.pem");
+    is_valid = ecdsa_verify(vec_ct, vec_pkey_sig, "./param/pkg-verify.pem");
 
-    if (ret) {
+    if (is_valid) {
         std::cout << "pkey signature is valid" << std::endl;
     } else {
         std::cout << "ERR: pkey signature verify failed!" << std::endl;
@@ -519,7 +523,7 @@ int client_keyreq(NetworkClient networkClient, AibeAlgo &algo, FILE *output) {
     return ret;
 }
 
-std::string client_encrypt(AibeAlgo &algo, int id, const std::string &message, bool enable_timer) {
+std::string client_encrypt(AibeAlgo &algo, int id, int sec, const std::string &message, bool enable_timer) {
 //    clear s, e
     for (int i = 0; i < n_enc; ++i) {
         s[i] = e[i] = steady_clock::now();
@@ -530,6 +534,7 @@ std::string client_encrypt(AibeAlgo &algo, int id, const std::string &message, b
     int ct_size;
     std::string resp_str;
     uint8_t ct_buf[algo.size_ct + 10];
+    std::vector<uint8_t> vec_idsn, vec_sig;
 
     algo.mpk_load();
     algo.id = id;
@@ -541,11 +546,28 @@ std::string client_encrypt(AibeAlgo &algo, int id, const std::string &message, b
 
     e[2] = steady_clock::now();
 
+    std::string timestamp = get_future_timestamp(sec);
+
     std::vector ct = std::vector<uint8_t>(ct_buf, ct_buf + ct_size);
+    json j_param = json{
+            {"sn", algo.sn},
+            {"id", algo.id},
+            {"ts", timestamp},
+    };
+
+//    sign to the json j
+    std::string j_str = j_param.dump();
+    std::vector<uint8_t> j_vec(j_str.begin(), j_str.end());
+    ecdsa_sign(j_vec, vec_sig, "param/client-sign.pem");
+
+    json j_header = json{
+            {"param", j_param},
+            {"sig", vec_sig},
+    };
+
     json j = json{
             {"ct", ct},
-            {"sn", algo.sn},
-            {"id", algo.id}
+            {"header", j_header},
     };
 
     std::ofstream(ct_path) << j;
@@ -575,6 +597,9 @@ std::string client_decrypt(AibeAlgo &algo, const std::string &req_str, NetworkCl
     std::string resp_str;
 //        LOG_INFO << req_str;
     json j = json::parse(req_str);
+    json j_header = j.at("header");
+    json j_param = j_header.at("param");
+
     j.at("ct").get_to(ct);
     uint8_t ct_buf[ct.size()];
     uint8_t msg_buf[algo.size_ct + 10];
@@ -592,27 +617,37 @@ std::string client_decrypt(AibeAlgo &algo, const std::string &req_str, NetworkCl
 
     if (ret == 0) {
         algo.mpk_load();
-        j.at("id").get_to(algo.id);
-        j.at("sn").get_to(algo.sn);
-        client_keyreq(networkClient, algo, OUTPUT);
+        j_param.at("id").get_to(algo.id);
+        j_param.at("sn").get_to(algo.sn);
 
-        s[6] = s[1] = e[0] = steady_clock::now();
+        int res = client_keyreq(networkClient, algo, j_header, OUTPUT);
 
-        LOG_INFO << "Start Decrypt";
-        LOG_INFO << "json" << j.dump();
+        if (res == 0) {
+            s[6] = s[1] = e[0] = steady_clock::now();
 
-        algo.dk_load();
-        int ct_size = ct.size();
+            LOG_INFO << "Start Decrypt";
+            LOG_INFO << "json" << j_param.dump();
 
-        std::copy(ct.begin(), ct.end(), ct_buf);
+            algo.dk_load();
+            int ct_size = ct.size();
 
-        s[7] = e[6] = steady_clock::now();
+            std::copy(ct.begin(), ct.end(), ct_buf);
 
-        algo.decrypt(msg_buf, ct_buf, ct_size);
+            s[7] = e[6] = steady_clock::now();
 
-        e[7] = steady_clock::now();
-        LOG_INFO << "Decrypted Message:\n" << msg_buf;
-        resp_str = std::string((char *) msg_buf);
+            algo.decrypt(msg_buf, ct_buf, ct_size);
+
+            e[7] = steady_clock::now();
+            LOG_INFO << "Decrypted Message:\n" << msg_buf;
+            resp_str = std::string((char *) msg_buf);
+        } else if (res == -2) {
+            std::string timestamp = j_param.at("ts");
+            resp_str = "Alert: Decryption Rejected! \nMsg: Decrypt should be after " + timestamp;
+        } else {
+            resp_str = "Key Request Error!";
+            LOG_INFO << "res: " << res;
+        }
+
     }
 
     e[1] = steady_clock::now();

@@ -1,10 +1,14 @@
 <!DOCTYPE html>
-<%inc
-#include "drogon/HttpAppFramework.h"
-#include "log.h"
-%>
-<html class="no-js">
+<!--[if lt IE 7]>
+<html class="no-js lt-ie9 lt-ie8 lt-ie7"> <![endif]-->
+<!--[if IE 7]>
+<html class="no-js lt-ie9 lt-ie8"> <![endif]-->
+<!--[if IE 8]>
+<html class="no-js lt-ie9"> <![endif]-->
+<!--[if gt IE 8]><!-->
+<html class="no-js"> <!--<![endif]-->
 <head>
+    <script src="work/js/jquery-1.10.2.min.js"></script>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title>Portex </title>
@@ -96,8 +100,11 @@
 </header>
 <!-- Header -->
 
+
+
 <main role="main">
     <!-- Start Intro -->
+
     <div id="fh5co-intro">
 
 	 <div class="container">
@@ -149,11 +156,11 @@
                         </fieldset>
                     </form>
 
-                </div>
+				</div>
 
-            <div class="col-md-6 fh5co-intro-sub row align-items-center">
+				<div class="col-md-6 fh5co-intro-sub row align-items-center">
 
-                <h3>Decryption</h3>
+				<h3>Decryption</h3>
                 <p></p>
                 <form action="#" method="post">
 
@@ -195,30 +202,25 @@
                                     <table id="LogTable">
 										<thead>
 										<tr>
-											<th>ID</th>
-											<th>SN</th>
-											<th>Protocol Time</th>
-											<th>Decrypt Time</th>
-											<th>Signature</th>
-											<th>Proof</th>
+                                            <th>ID</th>
+                                            <th>SN</th>
+                                            <th>Protocol Time</th>
+                                            <th>Decrypt Time</th>
+                                            <th>Signature</th>
+                                            <th>Proof</th>
 										</tr>
 										</thead>
 										<tbody>
-                                <%c++
-                                auto logList = @@.get<Json::Value>("list");
-                                    if (logList["size"].asInt() > 0) {
-                                    for(auto & it : logList["data"]) { %>
-                                    <tr>
-                                        <td>{%it["id"]%}</td>
-                                        <td>{%it["sn"]%}</td>
-                                        <td>{%it["protocol"]%}</td>
-                                        <td>{%it["ts"]%}</td>
-                                        <td>{%it["sig"]%}</td>
-                                        <td>
-                                            <p class="button btn btn-primary btn-block"> download </p>
-                                        </td>
-                                    </tr>
-                                    <%c++ }} %>
+											<tr>
+												<td></td>
+												<td></td>
+												<td></td>
+												<td></td>
+												<td></td>
+												<td>
+													<p class="button btn btn-primary btn-block"> download </p>
+												</td>
+											</tr>
 									</table>
 								</section>
 							</main>

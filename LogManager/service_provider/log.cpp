@@ -15,12 +15,75 @@ void sha256(const std::string &srcStr, std::string &encodedHexStr) {
     encodedHexStr = std::string(buf);
 }
 
-std::string get_timestamp(timeval &tv) {
-//    printf("%ld\t%ld\n", tv.tv_usec, tv.tv_sec);
-    std::string image_n = std::to_string(tv.tv_sec) + "_" + std::to_string(tv.tv_usec);
-    return image_n;
+std::string get_future_timestamp(int seconds) {
+    auto now = std::chrono::system_clock::now();
+    now += std::chrono::seconds(seconds);
+
+    std::time_t now_tt = std::chrono::system_clock::to_time_t(now);
+    std::tm tm = *std::localtime(&now_tt);
+
+    auto duration = now.time_since_epoch();
+    auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000;
+
+    std::ostringstream stream;
+    stream << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << '.' << std::setfill('0') << std::setw(3) << millis;
+
+    return stream.str();
 }
 
+std::string get_timestamp() {
+    return get_future_timestamp(0);
+}
+
+std::chrono::system_clock::time_point parse_timestamp(const std::string &timestamp) {
+    std::istringstream stream(timestamp);
+    std::tm tm{};
+    char extra;
+
+    stream >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S") >> extra;
+
+    int millis;
+    stream >> millis;
+
+    std::time_t tt = std::mktime(&tm);
+    auto duration = std::chrono::system_clock::from_time_t(tt);
+
+    return duration + std::chrono::milliseconds(millis);
+}
+
+bool compare_timestamps(const std::string &timestamp1, const std::string &timestamp2) {
+    return parse_timestamp(timestamp1) < parse_timestamp(timestamp2);
+}
+
+std::string vectorToHex(const std::vector<uint8_t>& data) {
+    std::stringstream ss;
+    for (const auto& byte : data) {
+        ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(byte);
+    }
+    return ss.str();
+}
+
+std::vector<uint8_t> hexToVector(const std::string& hexString) {
+    std::vector<uint8_t> result;
+    std::istringstream iss(hexString);
+    std::string byteString;
+
+    for (size_t i = 0; i < hexString.length(); i += 2) {
+        byteString = hexString.substr(i, 2);
+        uint8_t byte = static_cast<uint8_t>(std::stoul(byteString, nullptr, 16));
+        result.push_back(byte);
+    }
+    return result;
+}
+
+std::string wrapText(const std::string &input, size_t lineLength) {
+    std::ostringstream oss;
+    for (size_t i = 0; i < input.length(); i += lineLength) {
+        if (i != 0) oss << '\n';
+        oss << input.substr(i, lineLength);
+    }
+    return oss.str();
+}
 
 int Proofs::serialise(uint8_t *bytes) {
     log_header_t header;

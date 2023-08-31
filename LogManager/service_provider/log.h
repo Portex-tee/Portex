@@ -11,6 +11,7 @@
 #include <map>
 #include <vector>
 #include <chrono>
+#include <iomanip>
 #include <sys/time.h>
 #include "json.hpp"
 
@@ -26,7 +27,22 @@ typedef struct _log_header_t {
 
 void sha256(const std::string &srcStr, std::string &encodedHexStr);
 
-std::string get_timestamp(timeval &tv);
+std::string get_timestamp();
+
+
+std::string get_future_timestamp(int seconds);
+
+
+std::chrono::system_clock::time_point parse_timestamp(const std::string& timestamp);
+
+bool compare_timestamps(const std::string& timestamp1, const std::string& timestamp2);
+
+std::string vectorToHex(const std::vector<uint8_t>& data);
+
+std::vector<uint8_t> hexToVector(const std::string& hexString);
+
+
+std::string wrapText(const std::string &input, size_t lineLength = 16);
 
 class Proofs {
 public:

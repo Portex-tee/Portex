@@ -1,9 +1,5 @@
 #include "log.h"
 
-int get_id_sn(int tid, int tsn) {
-    return (tid << 12) + tsn;
-}
-
 void sha256(const std::string &srcStr, std::string &encodedHexStr) {
     unsigned char mdStr[33] = {0};
     SHA256((const unsigned char *) srcStr.c_str(), srcStr.length(), mdStr);// 调用sha256哈希
@@ -19,12 +15,45 @@ void sha256(const std::string &srcStr, std::string &encodedHexStr) {
     encodedHexStr = std::string(buf);
 }
 
-std::string get_timestamp(timeval &tv) {
-//    printf("%ld\t%ld\n", tv.tv_usec, tv.tv_sec);
-    std::string image_n = std::to_string(tv.tv_sec) + "_" + std::to_string(tv.tv_usec);
-    return image_n;
+std::string get_future_timestamp(int seconds) {
+    auto now = std::chrono::system_clock::now();
+    now += std::chrono::seconds(seconds);
+
+    std::time_t now_tt = std::chrono::system_clock::to_time_t(now);
+    std::tm tm = *std::localtime(&now_tt);
+
+    auto duration = now.time_since_epoch();
+    auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() % 1000;
+
+    std::ostringstream stream;
+    stream << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << '.' << std::setfill('0') << std::setw(3) << millis;
+
+    return stream.str();
 }
 
+std::string get_timestamp() {
+    return get_future_timestamp(0);
+}
+
+std::chrono::system_clock::time_point parse_timestamp(const std::string &timestamp) {
+    std::istringstream stream(timestamp);
+    std::tm tm{};
+    char extra;
+
+    stream >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S") >> extra;
+
+    int millis;
+    stream >> millis;
+
+    std::time_t tt = std::mktime(&tm);
+    auto duration = std::chrono::system_clock::from_time_t(tt);
+
+    return duration + std::chrono::milliseconds(millis);
+}
+
+bool compare_timestamps(const std::string &timestamp1, const std::string &timestamp2) {
+    return parse_timestamp(timestamp1) < parse_timestamp(timestamp2);
+}
 
 int Proofs::serialise(uint8_t *bytes) {
     log_header_t header;
@@ -99,8 +128,7 @@ bool Proofs::verify_proofs() {
     return path->verify(root);
 }
 
-
-int LogTree::append(json &j_node, Proofs &prf) {
+int LogTree::append(int idsn, json &j_node, Proofs &prf) {
     LogNode node;
     node.node = j_node;
 
@@ -109,10 +137,6 @@ int LogTree::append(json &j_node, Proofs &prf) {
     sha256(j_str, encodedHexStr);
     ChronTreeT::Hash hash(encodedHexStr);
     node.hash = hash;
-
-    int id = j_node.at("id").get_to(id);
-    int sn = j_node.at("sn").get_to(sn);
-    int idsn = get_id_sn(id, sn);
 
     int ret = 0;
 

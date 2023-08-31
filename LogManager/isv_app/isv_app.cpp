@@ -98,10 +98,15 @@ using namespace drogon;
 using namespace std::chrono;
 typedef time_point<steady_clock> ts;
 
+
+int lm_port = 22333;
+int pkg_port = 12333;
+std::string pkg_ip = "127.0.0.1";
+
 // experiments vars
-const int n_trace = 3, n_kreq = 2;
+const int n_trace = 2, n_kreq = 2;
 std::vector<microseconds> ts_trace[n_trace], ts_kreq[n_kreq];
-ts s[n_trace], e[n_trace];
+ts s[n_kreq], e[n_kreq];
 
 LogTree logTree;
 extern char sendbuf[BUFSIZ]; //数据传送的缓冲区
@@ -128,12 +133,11 @@ int lm_keyreq(const uint8_t *p_msg,
     ra_samp_request_header_t *p_request = NULL;
     ra_samp_response_header_t *p_response = NULL;
     int data_size, msg2_size, recvlen;
-    std::vector<uint8_t> vec_sig, vec_prf, vec_pms, ir, ir_sig;
+    std::vector<uint8_t> param_sig, vec_prf, vec_pms, ir, ir_sig;
 
-    timeval tv = {};
-    gettimeofday(&tv, NULL);
+    std::string j_str, ts, j_ts, str_sig;
 
-    std::string j_str, ts;
+    ts = get_timestamp();
     int id, sn;
 
     // parse json
@@ -143,79 +147,114 @@ int lm_keyreq(const uint8_t *p_msg,
         std::cout << msg_body << std::endl;
         json1 = json::parse(msg_body);
     }
-    json1.at("id").get_to(id);
-    json1.at("sn").get_to(sn);
-    json1.at("sig").get_to(vec_sig);
+
+    json j_header = json1.at("header");
+    json j_param = j_header.at("param");
+
+    j_param.at("id").get_to(id);
+    j_param.at("sn").get_to(sn);
+    j_param.at("ts").get_to(j_ts);
+    j_header.at("sig").get_to(param_sig);
     json1.at("pms").get_to(vec_pms);
 
-    // construct node json
-    ts = get_timestamp(tv);
-    json j_node{
-            {"id",  id},
-            {"sn",  sn},
-            {"sig", vec_sig},
-            {"ts",  ts}
-    };
+    j_str = j_param.dump();
+    std::vector<uint8_t> vec_param(j_str.begin(), j_str.end());
+    bool is_valid = ecdsa_verify(vec_param, param_sig, "param/client-verify.pem");
 
-    // MT.Insert
-    logTree.append(get_idsn(id, sn), j_node, proofs);
-    LOG_INFO << "insert: id=" << id << ", sn=" << sn << ", idsn=" << get_idsn(id, sn);
+    if (is_valid && compare_timestamps(j_ts, ts)) {
 
-    // Parse proofs to json
-    msg2_size = proofs.serialise(data);
-    vec_prf = std::vector<uint8_t>(data, data + msg2_size);
+        close(client.sockfd);
+        if (client.client(pkg_ip.c_str(), pkg_port) != 0) {
+            fprintf(OUTPUT, "Connect Server Error, Exit!\n");
+            ret = -1;
+            goto CLEANUP;
+        }
 
-    json j_req{
-            {"prf", vec_prf},
-            {"pms", vec_pms}
-    };
+        s[1] = steady_clock::now();
+        str_sig = vectorToHex(param_sig);
+//        str_sig = wrapText(str_sig, 16);
+        // construct node json
+        json j_node{
+                {"id",       id},
+                {"sn",       sn},
+                {"protocol", j_ts},
+                {"sig",      str_sig},
+                {"ts",       ts}
+        };
 
-    ir = json::to_bjdata(j_req);
+        // MT.Insert
+        logTree.append(get_idsn(id, sn), j_node, proofs);
+        LOG_INFO << "insert: id=" << id << ", sn=" << sn << ", idsn=" << get_idsn(id, sn);
 
-    s[1] = steady_clock::now();
-    ecdsa_sign(ir, ir_sig, "param/lm-sign.pem");
-    e[1] = steady_clock::now();
+        // Parse proofs to json
+        msg2_size = proofs.serialise(data);
+        vec_prf = std::vector<uint8_t>(data, data + msg2_size);
 
-    json j_body{
-            {"ir",     j_req},
-            {"ir_sig", ir_sig}
-    };
+        json j_req{
+                {"prf", vec_prf},
+                {"pms", vec_pms}
+        };
 
-    std::string str_body;
-    str_body = j_body.dump();
-    std::cout << str_body << std::endl;
-    msg2_size = str_body.size() + 1;
+        ir = json::to_bjdata(j_req);
 
-    // send request to pkg
-    p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg2_size);
-    p_request->type = TYPE_RA_KEYREQ;
-    p_request->size = msg2_size;
+        ecdsa_sign(ir, ir_sig, "param/lm-sign.pem");
+        e[1] = steady_clock::now();
 
-    strcpy((char *) p_request->body, str_body.c_str());
+        json j_body{
+                {"ir",     j_req},
+                {"ir_sig", ir_sig}
+        };
 
-    memset(client.sendbuf, 0, BUFSIZ);
-    memcpy(client.sendbuf, p_request, sizeof(ra_samp_request_header_t) + msg2_size);
-    client.SendTo(sizeof(ra_samp_request_header_t) + p_request->size);
+        std::string str_body;
+        str_body = j_body.dump();
+        std::cout << str_body << std::endl;
+        msg2_size = str_body.size() + 1;
 
-    // recv
-    recvlen = client.RecvFrom();
-    p_response = (ra_samp_response_header_t *) malloc(
-            sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
+        // send request to pkg
+        p_request = (ra_samp_request_header_t *) malloc(sizeof(ra_samp_request_header_t) + msg2_size);
+        p_request->type = TYPE_RA_KEYREQ;
+        p_request->size = msg2_size;
 
-    memcpy(p_response, client.recvbuf, recvlen);
-    if ((p_response->type != TYPE_RA_KEYREQ)) {
-        fprintf(OUTPUT, "Error: INTERNAL ERROR - response type unmatched in [%s]-[%d].",
-                __FUNCTION__, __LINE__);
-        ret = -1;
-        goto CLEANUP;
+        strcpy((char *) p_request->body, str_body.c_str());
+
+        memset(client.sendbuf, 0, BUFSIZ);
+        memcpy(client.sendbuf, p_request, sizeof(ra_samp_request_header_t) + msg2_size);
+        client.SendTo(sizeof(ra_samp_request_header_t) + p_request->size);
+
+        // recv
+        recvlen = client.RecvFrom();
+        p_response = (ra_samp_response_header_t *) malloc(
+                sizeof(ra_samp_response_header_t) + ((ra_samp_response_header_t *) client.recvbuf)->size);
+
+        memcpy(p_response, client.recvbuf, recvlen);
+        if ((p_response->type != TYPE_RA_KEYREQ)) {
+            fprintf(OUTPUT, "Error: INTERNAL ERROR - response type unmatched in [%s]-[%d].",
+                    __FUNCTION__, __LINE__);
+            ret = -1;
+            goto CLEANUP;
+        }
+        std::cout << "certificate received" << std::endl;
+
+
+    } else {
+        p_response = (ra_samp_response_header_t *) malloc(sizeof(ra_samp_response_header_t));
+
+        // construct response
+        memset(p_response, 0, sizeof(ra_samp_response_header_t));
+        p_response->size = 0;
+        p_response->status[0] = 1;
+        p_response->status[1] = 0;
+
+//        log_info output ts and j_ts
+        LOG_INFO << "ts: " << ts << ", j_ts: " << j_ts;
+        LOG_INFO << "is_valid: " << is_valid;
+        LOG_INFO << "compare_timestamps: " << compare_timestamps(j_ts, ts);
     }
-    std::cout << "certificate received" << std::endl;
 
     p_response->type = TYPE_LM_KEYREQ;
     memset(server.sendbuf, 0, BUFSIZ);
     memcpy(server.sendbuf, p_response, sizeof(ra_samp_response_header_t) + p_response->size);
     server.SendTo(sizeof(ra_samp_response_header_t) + p_response->size);
-
 
 //    assert(proofs.path->verify(proofs.root));
 
@@ -241,14 +280,13 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
     ra_samp_response_header_t *p_response = NULL;
     int data_size, msg2_size, recvlen;
 
-    timeval tv = {};
-    gettimeofday(&tv, NULL);
-
     int idsn = *((int *) p_msg);
     LOG_INFO << "idsn: " << idsn;
 
     std::string str_data;
     // log trace
+
+    s[0] = steady_clock::now();
     if (logTree.trace(idsn, logNode, proofs)) {
         json j_node = logNode.node;
         LOG_INFO << "trace: " << j_node.dump();
@@ -260,7 +298,7 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
 
         // construct response json
         json j_data = {
-                {"prf", vec_prf},
+                {"prf",  vec_prf},
                 {"node", j_node},
         };
         str_data = j_data.dump();
@@ -271,6 +309,11 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
         str_data = "";
         msg2_size = str_data.size() + 1;
     }
+    e[0] = steady_clock::now();
+
+    s[1] = steady_clock::now();
+    logTree.chronTree.path(logNode.index);
+    e[1] = steady_clock::now();
 
 
     // construct response
@@ -287,8 +330,7 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
     return ret;
 }
 
-static void signalHandler(int signum)
-{
+static void signalHandler(int signum) {
     // 处理 SIGINT 信号
     LOG_INFO << "接收到信号" << signum;
 
@@ -297,6 +339,7 @@ static void signalHandler(int signum)
 }
 
 void http_server() {
+    std::cout << "Load http server" << std::endl;
     drogon::app().loadConfigFile("./config.json");
 
     drogon::HttpAppFramework::instance()
@@ -304,7 +347,7 @@ void http_server() {
                     ("/service",
                      [=](const drogon::HttpRequestPtr &req,
                          std::function<void(const drogon::HttpResponsePtr &)> &&callback) {
-                        LOG_INFO << "access /service";
+                         LOG_INFO << "access /service";
 
                          Json::Value ret;
                          ret["code"] = 0;
@@ -324,10 +367,11 @@ void http_server() {
 
                          auto logList = ret;
                          if (logList["size"].asInt() > 0) {
-                             for (auto &it: logList["data"]) {
-                                 LOG_INFO << it["id"].asInt() << ' ' << it["sn"].asInt() << ' '
-                                          << it["timestamp"].asInt();
-                             }
+//                             for (auto &it: logList["data"]) {
+//                                 LOG_INFO << it["id"].asInt() << ' ' << it["sn"].asInt() << ' '
+//                                          << it["timestamp"].asInt();
+//                             }
+                            LOG_INFO << "logList size: " << logList["size"].asInt();
                          }
 
                          drogon::HttpViewData httpViewData;
@@ -343,8 +387,11 @@ void http_server() {
     LOG_INFO << "http server start";
 
     drogon::app().getLoop()->runAfter(0.0, [] { signal(SIGINT, signalHandler); });
-    drogon::app().run();
+    if (!experiment_enable) {
+        drogon::app().run();
+    }
 }
+
 
 int main(int argc, char *argv[]) {
 //    if args has -t, set experiment_enable to 1
@@ -357,9 +404,7 @@ int main(int argc, char *argv[]) {
     FILE *OUTPUT = stdout;
     NetworkClient client;
     NetworkServer server;
-    int lm_port = 22333;
-    int pkg_port = 12333;
-    std::string pkg_ip = "127.0.0.1";
+
     extern LogTree logTree;
     ra_samp_request_header_t *p_req;
     ra_samp_response_header_t **p_resp;
@@ -378,9 +423,8 @@ int main(int argc, char *argv[]) {
         ecdsa_kgen("../pkg/param/lm-verify.pem", "param/lm-sign.pem");
     }
 
-    if (!experiment_enable) {
-        std::thread t1(http_server);
-    }
+    std::thread t1(http_server);
+
 
     int launch_token_update = 0;
     sgx_launch_token_t launch_token = {0};
@@ -405,13 +449,13 @@ int main(int argc, char *argv[]) {
     fprintf(OUTPUT, "start socket....\n");
     server.server(lm_port);
 
-    if(experiment_enable) {
+    if (experiment_enable) {
         kreq_file = out_dir + "time-lm-kreq.csv";
         trace_file = out_dir + "time-lm-trace.csv";
         ofs_kreq.open(kreq_file);
         ofs_trace.open(trace_file);
         ofs_kreq << "KReq.LM, KReq.LogGen" << std::endl;
-        ofs_trace << "Trace" << std::endl;
+        ofs_trace << "LogTrace, ProofGen" << std::endl;
     }
 
     do {
@@ -435,12 +479,6 @@ int main(int argc, char *argv[]) {
 
                         // SOCKET: connect to server
 
-                        close(client.sockfd);
-                        if (client.client(pkg_ip.c_str(), pkg_port) != 0) {
-                            fprintf(OUTPUT, "Connect Server Error, Exit!\n");
-                            ret = -1;
-                            goto CLEANUP;
-                        }
 
                         s[0] = steady_clock::now();
 
@@ -484,6 +522,23 @@ int main(int argc, char *argv[]) {
                                  OUTPUT,
                                  server);
 
+
+                        if (experiment_enable) {
+                            for (int i = 0; i < n_trace; ++i) {
+                                ts_trace[i].emplace_back(duration_cast<microseconds>(e[i] - s[i]));
+                            }
+
+                            // output ts_trace to csv file
+                            for (int i = 0; i < n_trace; ++i) {
+                                ofs_trace << ts_trace[i].back().count();
+                                if (i != n_trace - 1) {
+                                    ofs_trace << ", ";
+                                } else {
+                                    ofs_trace << std::endl;
+                                }
+                            }
+                        }
+
                         SAFE_FREE(p_req);
                         is_recv = false;
                         break;
@@ -492,7 +547,7 @@ int main(int argc, char *argv[]) {
                         ret = -1;
                         fprintf(stderr, "Error, unknown ra message type. Type = %d [%s].\n",
                                 p_req->type, __FUNCTION__);
-                        goto CLEANUP;
+                        break;
                 }
             }
         } while (is_recv);
@@ -513,6 +568,8 @@ int main(int argc, char *argv[]) {
     CLEANUP:
 
     app().quit();
+
+    t1.join();
     terminate(client);
     client.Cleanupsocket();
     sgx_destroy_enclave(enclave_id);
