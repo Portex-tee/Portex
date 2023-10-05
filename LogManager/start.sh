@@ -1,1 +1,1 @@
-build/LogManager > log.txt 2>&1
+build/LogManager > log.txt

@@ -51,7 +51,6 @@
     <script src="work/js/modernizr-2.6.2.min.js"></script>
     <script src="work/js/respond.min.js"></script>
     <![endif]-->
-
 </head>
 <body>
 
@@ -96,36 +95,37 @@
 </header>
 <!-- Header -->
 
+
 <main role="main">
     <!-- Start Intro -->
+
     <div id="fh5co-intro">
 
 	 <div class="container">
 		<div class="row">
 
-            <div class="col-md-12 fh5co-intro-sub row align-items-center">
+		<div class="col-md-12 fh5co-intro-sub">
+		This is a demo service running based on a server with 3.5GHz Intel Xeon CPU (Ice Lake).</br>
+	    Decryption policy as follows: decryption is only allowed after a certain period of time; otherwise, it will be considered illegal decryption.
+		  </div>
 
-                <h3>Introduction</h3>
-                <ol>
-                    <li><strong>Encryption:</strong> Enter your unique ID, followed by the plaintext you wish to encrypt. Decide on the duration after which the ciphertext can be decrypted. The generated ciphertext is displayed in the designated field, which can be shared or stored securely.</li>
-                    <li><strong>Decryption:</strong> To decipher the ciphertext, paste it into the decryption section. The original plaintext will be revealed if the specified duration has passed and the current time exceeds the Protocol Time indicated in the ciphertext. If attempted before this time, decryption will be rejected.</li>
-                    <li><strong>Logs:</strong> To ensure complete transparency, every decryption event is meticulously logged. This includes key information such as ID, SN, protocol time (the specified decryption time within the ciphertext), decrypt time (the actual time the decryption request was received), along with the signature and proof.</li>
-                </ol>
 
-            </div>
 
 				<div class="col-md-6 fh5co-intro-sub">
 
                     <h3>Encryption</h3>
-                    <p></p>
+
                     <form action="#" method="post">
                         <fieldset>
                             <div class="form-group">
+							 <p><small> Enter your unique ID (must be <span style="color: green">number</span> ), followed by the plaintext you wish to encrypt.</small> </p>
                                 ID: <input class="form-control input" name="id" type="number" id="id" placeholder="Your ID *" required>
                                 Plaintext:
                                 <label for="message" class="sr-only">Message</label>
-                                <textarea name="message" placeholder="Message" id="message" class="form-control input-lg" rows="1" required></textarea>
-                                Duration:
+                                <textarea name="message" placeholder="Message" id="message" class="form-control input-lg" rows="3" required></textarea>
+                                </br>
+								<p><small>Decide on the duration after which the ciphertext can be decrypted.</small></p>
+								Duration:
                                 <div style="display: flex; justify-content: space-between;">
                                     <input class="form-control input" name="duration" type="number" id="duration" placeholder="Duration *" required style="width: 45%;">
                                     <select class="form-control input" name="unit" id="unit" required style="width: 45%;">
@@ -135,9 +135,11 @@
                                         <option value="days">Days</option>
                                     </select>
                                 </div>
+								</br>
+								<p><small>The ciphertext and quote can be shared and stored.</small></p>
                                 Ciphertext:
                                 <label for="ciphertext" class="sr-only">Ciphertext</label>
-                                <textarea name="ciphertext" placeholder="Ciphertext" id="ciphertext" class="form-control input-lg default-cursor" rows="4" required readonly></textarea>
+                                <textarea name="ciphertext" placeholder="Ciphertext" id="ciphertext" class="form-control input-lg default-cursor" rows="3" required readonly></textarea>
                                 </br>
                             </div>
                         </fieldset>
@@ -149,26 +151,35 @@
                         </fieldset>
                     </form>
 
-                </div>
+				</div>
 
-            <div class="col-md-6 fh5co-intro-sub row align-items-center">
+				<div class="col-md-6 fh5co-intro-sub row align-items-center">
 
-                <h3>Decryption</h3>
+				<h3>Decryption</h3>
                 <p></p>
                 <form action="#" method="post">
 
                     <fieldset>
                         <div class="form-group">
+						   <p><small>To decipher the ciphertext, paste it into the following fields.
+						   The original plaintext will be revealed if the current time exceeds the protocol time defined in ciphertext.
+						   If attempted before this time, decryption will be rejected, but the operation will still be logged. </small> </p>
+
+							 </br>
                             Ciphertext:
-                            <label for="message" class="sr-only">Message</label>
+                            <label for="ciphertext" class="sr-only">Ciphertext</label>
                             <textarea name="dec-ciphertext" placeholder="Ciphertext" id="dec-ciphertext"
-                                      class="form-control input-lg" rows="6" required=""></textarea>
+                                      class="form-control input-lg" rows="3" required=""></textarea>
 
-
+							</br>
+                            TEE quote:
+                            <label for="ciphertext" class="sr-only">Ciphertext</label>
+                            <textarea name="quote-out" placeholder="TEE Quote" id="quote-out" class="form-control input-lg default-cursor" rows="2" required readonly></textarea>
+                            </br>
                             Message:
                             <label for="message" class="sr-only">Message</label>
                             <textarea name="dec-plaintext" placeholder="Message" id="dec-plaintext"
-                                      class="form-control input-lg" rows="4" required="" readonly></textarea>
+                                      class="form-control input-lg" rows="3" required="" readonly></textarea>
                             </br>
                         </div>
                     </fieldset>
@@ -187,7 +198,8 @@
 
 				<div class="col-md-12 fh5co-intro-sub row align-items-center">
 
-				<h3>Decryption Log</h3>
+				<h3>Accountability of Decryption</h3>
+                    <p><small> Every decryption event is meticulously logged. This includes key information such as ID, SN, protocol time (the specified decryption time within the ciphertext), decrypt time (the actual time the decryption request was received), validity, along with the signature and proof. Here, when decrypt time exceeds protocol time, the decryption is <span style="color: green">Valid</span>, otherwise it is <span style="color: red">Invalid</span>.</small> </p>
 
 						<div class="col-md">
 							<main class="table">
@@ -199,8 +211,9 @@
 											<th>SN</th>
 											<th>Protocol Time</th>
 											<th>Decrypt Time</th>
+											<th>Validity</th>
 											<th>Signature</th>
-											<th>Proof</th>
+<!--											<th>Proof</th>-->
 										</tr>
 										</thead>
 										<tbody>
@@ -213,10 +226,15 @@
                                         <td>{%it["sn"]%}</td>
                                         <td>{%it["protocol"]%}</td>
                                         <td>{%it["ts"]%}</td>
+                                        <%c++ if (it["valid"].asBool()) { %>
+                                        <td><p style="color: green">Valid</p></td>
+                                        <%c++ } else { %>
+                                        <td><p style="color: red">Invalid</p></td>
+                                        <%c++ } %>
                                         <td>{%it["sig"]%}</td>
-                                        <td>
-                                            <p class="button btn btn-primary btn-block"> download </p>
-                                        </td>
+<!--                                        <td>-->
+<!--                                            <p class="button btn btn-primary btn-block"> download </p>-->
+<!--                                        </td>-->
                                     </tr>
                                     <%c++ }} %>
 									</table>
@@ -224,8 +242,17 @@
 							</main>
 						</div>
 				</div>
+
+				 <div class="col-md-12 fh5co-intro-sub">
+				   <p><small>We aim to guarantee data security and accountability in decryption operations.
+								With a focus on transparency and a clear audit trail, our system offers a powerful solution for
+								secure decryption
+								while alerting against any suspicious decryption activities. </small> </p>
+				   </div>
+
 		</div>
     </div>
+
 
     </div>
     <!-- End Intro -->

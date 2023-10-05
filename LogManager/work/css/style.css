@@ -1368,5 +1368,7 @@ tr:nth-child(4n+2) .btn:hover {
   background-color: #06b3ef;
 }
 
-
+.fh5co-pricing-table-item {
+  margin-bottom: 30px; /* or whatever value you prefer */
+}
 /*# sourceMappingURL=style.css.map */

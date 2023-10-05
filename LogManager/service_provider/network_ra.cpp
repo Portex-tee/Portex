@@ -155,8 +155,7 @@ int NetworkEnd::RecvFrom() {
     /*接收服务端的数据*/
     int len = 0;
     len = recv(client_sockfd, recvbuf, BUFSIZ, 0);
-    if (len > 0)
-        recvbuf[len] = 0;
+
     return len;
 }
 

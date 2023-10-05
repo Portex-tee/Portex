@@ -123,8 +123,8 @@ int lm_keyreq(const uint8_t *p_msg,
               uint32_t msg_size,
               sgx_enclave_id_t enclave_id,
               FILE *OUTPUT,
-              NetworkClient client,
-              NetworkServer server) {
+              NetworkClient &client,
+              NetworkServer &server) {
 
     int ret = 0;
     uint8_t data[BUFSIZ];
@@ -160,31 +160,26 @@ int lm_keyreq(const uint8_t *p_msg,
     j_str = j_param.dump();
     std::vector<uint8_t> vec_param(j_str.begin(), j_str.end());
     bool is_valid = ecdsa_verify(vec_param, param_sig, "param/client-verify.pem");
+    bool time_valid = compare_timestamps(j_ts, ts);
 
-    if (is_valid && compare_timestamps(j_ts, ts)) {
-
-        close(client.sockfd);
-        if (client.client(pkg_ip.c_str(), pkg_port) != 0) {
-            fprintf(OUTPUT, "Connect Server Error, Exit!\n");
-            ret = -1;
-            goto CLEANUP;
-        }
-
-        s[1] = steady_clock::now();
-        str_sig = vectorToHex(param_sig);
+    s[1] = steady_clock::now();
+    str_sig = vectorToHex(param_sig);
 //        str_sig = wrapText(str_sig, 16);
-        // construct node json
-        json j_node{
-                {"id",       id},
-                {"sn",       sn},
-                {"protocol", j_ts},
-                {"sig",      str_sig},
-                {"ts",       ts}
-        };
+    // construct node json
+    json j_node{
+            {"id",       id},
+            {"sn",       sn},
+            {"protocol", j_ts},
+            {"ts",       ts},
+            {"valid",    time_valid},
+            {"sig",      str_sig},
+    };
 
-        // MT.Insert
-        logTree.append(get_idsn(id, sn), j_node, proofs);
-        LOG_INFO << "insert: id=" << id << ", sn=" << sn << ", idsn=" << get_idsn(id, sn);
+    // MT.Insert
+    logTree.append(get_idsn(id, sn), j_node, proofs);
+    LOG_INFO << "insert: id=" << id << ", sn=" << sn << ", idsn=" << get_idsn(id, sn);
+
+    if (is_valid && time_valid) {
 
         // Parse proofs to json
         msg2_size = proofs.serialise(data);
@@ -199,6 +194,13 @@ int lm_keyreq(const uint8_t *p_msg,
 
         ecdsa_sign(ir, ir_sig, "param/lm-sign.pem");
         e[1] = steady_clock::now();
+
+//        close(client.sockfd);
+        if (client.client(pkg_ip.c_str(), pkg_port) != 0) {
+            fprintf(OUTPUT, "Connect Server Error, Exit!\n");
+            ret = -1;
+            goto CLEANUP;
+        }
 
         json j_body{
                 {"ir",     j_req},
@@ -234,6 +236,7 @@ int lm_keyreq(const uint8_t *p_msg,
             goto CLEANUP;
         }
         std::cout << "certificate received" << std::endl;
+        std::cout << "recvlen: " << recvlen << std::endl;
 
 
     } else {
@@ -252,6 +255,8 @@ int lm_keyreq(const uint8_t *p_msg,
     }
 
     p_response->type = TYPE_LM_KEYREQ;
+    LOG_INFO << "response type = " << p_response->type;
+    LOG_INFO << "response size = " << p_response->size;
     memset(server.sendbuf, 0, BUFSIZ);
     memcpy(server.sendbuf, p_response, sizeof(ra_samp_response_header_t) + p_response->size);
     server.SendTo(sizeof(ra_samp_response_header_t) + p_response->size);
@@ -260,6 +265,7 @@ int lm_keyreq(const uint8_t *p_msg,
 
     CLEANUP:
 
+    close(client.client_sockfd);
     SAFE_FREE(p_request);
     SAFE_FREE(p_response);
     return ret;
@@ -269,13 +275,13 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
              uint32_t msg_size,
              sgx_enclave_id_t enclave_id,
              FILE *OUTPUT,
-             NetworkServer server) {
+             NetworkServer &server) {
 
 
     int ret = 0;
     uint8_t data[BUFSIZ];
-    Proofs proofs;
-    LogNode logNode;
+    std::vector<Proofs> proofsList;
+    std::vector<LogNode> logNodeList;
     std::string encodedHexStr;
     ra_samp_response_header_t *p_response = NULL;
     int data_size, msg2_size, recvlen;
@@ -287,21 +293,30 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
     // log trace
 
     s[0] = steady_clock::now();
-    if (logTree.trace(idsn, logNode, proofs)) {
-        json j_node = logNode.node;
-        LOG_INFO << "trace: " << j_node.dump();
+    if (logTree.trace(idsn, logNodeList, proofsList)) {
+        std::vector<json> j_nodeList;
+        for (int i = 0; i < logNodeList.size(); i++) {
+            auto &logNode = logNodeList[i];
+            auto &proofs = proofsList[i];
+            json j_node = logNode.node;
+            LOG_INFO << "trace: " << j_node.dump();
 
 
-        // Parse proofs to json
-        msg2_size = proofs.serialise(data);
-        auto vec_prf = std::vector<uint8_t>(data, data + msg2_size);
+            // Parse proofs to json
+            msg2_size = proofs.serialise(data);
+            auto vec_prf = std::vector<uint8_t>(data, data + msg2_size);
 
-        // construct response json
-        json j_data = {
-                {"prf",  vec_prf},
-                {"node", j_node},
+            // construct response json
+            json j_data = {
+                    {"prf",  vec_prf},
+                    {"node", j_node},
+            };
+            j_nodeList.push_back(j_data);
+        }
+        json j_body = {
+                {"nodeList", j_nodeList}
         };
-        str_data = j_data.dump();
+        str_data = j_body.dump();
         msg2_size = str_data.size() + 1;
         LOG_INFO << "response: size:" << msg2_size << "; Body size: " << str_data.length();
 
@@ -312,7 +327,7 @@ int lm_trace(const ra_samp_request_header_t *p_msg,
     e[0] = steady_clock::now();
 
     s[1] = steady_clock::now();
-    logTree.chronTree.path(logNode.index);
+    logTree.chronTree.path(logNodeList.back().index);
     e[1] = steady_clock::now();
 
 
@@ -342,45 +357,31 @@ void http_server() {
     std::cout << "Load http server" << std::endl;
     drogon::app().loadConfigFile("./config.json");
 
-    drogon::HttpAppFramework::instance()
-            .registerHandler
-                    ("/service",
-                     [=](const drogon::HttpRequestPtr &req,
-                         std::function<void(const drogon::HttpResponsePtr &)> &&callback) {
-                         LOG_INFO << "access /service";
+    app().registerHandler("/service", [&](const HttpRequestPtr &req,
+                                          std::function<void(const HttpResponsePtr &)> &&callback) {
+//                         LOG_INFO << "access /service";
+        Json::Value data;
+        Json::Reader reader;
 
-                         Json::Value ret;
-                         ret["code"] = 0;
-                         ret["msg"] = "ok";
-                         ret["size"] = int(logTree.lexTree.size());
+//        parse the latest 20 nodes, in reverse order
+        int n = logTree.nodeList.size();
+        int start = n - 20;
+        if (start < 0) {
+            start = 0;
+        }
+        for (int i = n - 1; i >= start; i--) {
+            Json::Value item;
+            reader.parse(logTree.nodeList[i].node.dump(), item);
+            data.append(item);
+        }
 
-                         Json::Value data;
+        std::string resp_str = data.toStyledString();
 
-                         for (auto &it: logTree.lexTree) {
-                             Json::Reader reader;
-                             Json::Value item2;
-                             reader.parse(it.second.node.dump(), item2);
-                             data.append(item2);
-                         }
-
-                         ret["data"] = data;
-
-                         auto logList = ret;
-                         if (logList["size"].asInt() > 0) {
-//                             for (auto &it: logList["data"]) {
-//                                 LOG_INFO << it["id"].asInt() << ' ' << it["sn"].asInt() << ' '
-//                                          << it["timestamp"].asInt();
-//                             }
-                            LOG_INFO << "logList size: " << logList["size"].asInt();
-                         }
-
-                         drogon::HttpViewData httpViewData;
-                         httpViewData.insert("list", ret);
-                         auto resp = HttpResponse::newHttpViewResponse("LogView.csp", httpViewData);
-                         callback(resp);
-
-                     }
-                    );
+        auto resp = HttpResponse::newHttpResponse();
+        resp->setBody(resp_str);
+        resp->addHeader("Access-Control-Allow-Origin", "*");
+        callback(resp);
+    });
 
 //    app().enableDynamicViewsLoading({"views/"});
 
@@ -544,9 +545,15 @@ int main(int argc, char *argv[]) {
                         break;
 
                     default:
-                        ret = -1;
                         fprintf(stderr, "Error, unknown ra message type. Type = %d [%s].\n",
                                 p_req->type, __FUNCTION__);
+                        LOG_INFO << "Error, unknown ra message type. Type = " << p_req->type << " [" << __FUNCTION__
+                                 << "].";
+//                        output accept client info
+                        LOG_INFO << "client ip: " << inet_ntoa(server.remote_addr.sin_addr) << ", port: "
+                                 << ntohs(server.remote_addr.sin_port);
+
+                        is_recv = false;
                         break;
                 }
             }
@@ -571,7 +578,7 @@ int main(int argc, char *argv[]) {
 
     t1.join();
     terminate(client);
-    client.Cleanupsocket();
+    server.Cleanupsocket();
     sgx_destroy_enclave(enclave_id);
 
     fprintf(OUTPUT, "Success Clean Up A-IBE ");

@@ -138,10 +138,10 @@ int NetworkClient::client(const char *ip, int port) {
     }
 
     /*将套接字绑定到服务器的网络地址上*/
-    while (connect(client_sockfd, (struct sockaddr *) &remote_addr, sizeof(remote_addr)) < 0) {
+    if (connect(client_sockfd, (struct sockaddr *) &remote_addr, sizeof(remote_addr)) < 0) {
         perror("connect");
 //        wait 1 second
-        sleep(1);
+        return 1;
     }
     printf("connected to server\n");
     return 0;
@@ -162,8 +162,7 @@ int NetworkEnd::RecvFrom() {
         }
         len += ret;
     }
-    if (len > 0)
-        recvbuf[len] = 0;
+
     return len;
 }
 

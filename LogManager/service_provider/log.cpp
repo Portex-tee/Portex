@@ -177,19 +177,31 @@ int LogTree::append(int idsn, json &j_node, Proofs &prf) {
 
     node.index = chronTree.max_index();
 
-    lexTree[idsn] = node;
+    nodeList.push_back(node);
+
+    if (lexTree.find(idsn) == lexTree.end()) {
+        lexTree[idsn] = std::vector<int>();
+    }
+    lexTree[idsn].push_back(nodeList.size() - 1);
     return ret;
 }
 
-int LogTree::trace(int idsn, LogNode &logNode, Proofs &prf) {
+int LogTree::trace(int idsn, std::vector<LogNode> &logNodeList, std::vector<Proofs> &proofsList) {
     if (lexTree.find(idsn) == lexTree.end()) {
         return 0;
     }
+    std::vector<int> logNodeIndexList = lexTree[idsn];
+    for (const auto& index: logNodeIndexList) {
+        logNodeList.push_back(nodeList[index]);
+    }
 
-    logNode = lexTree[idsn];
-
-    prf.node = logNode.hash;
-    prf.root = chronTree.root();
-    prf.path = chronTree.path(logNode.index);
+    for (const auto& logNode: logNodeList) {
+        Proofs prf;
+        prf.node = logNode.hash;
+        prf.root = chronTree.root();
+        prf.path = chronTree.path(logNode.index);
+        proofsList.push_back(prf);
+    }
     return 1;
 }
+

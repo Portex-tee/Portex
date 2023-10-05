@@ -37,6 +37,13 @@ std::chrono::system_clock::time_point parse_timestamp(const std::string& timesta
 
 bool compare_timestamps(const std::string& timestamp1, const std::string& timestamp2);
 
+std::string vectorToHex(const std::vector<uint8_t>& data);
+
+std::vector<uint8_t> hexToVector(const std::string& hexString);
+
+
+std::string wrapText(const std::string &input, size_t lineLength = 16);
+
 class Proofs {
 public:
     ChronTreeT::Hash node;
@@ -62,11 +69,11 @@ public:
 class LogTree {
 public:
     ChronTreeT chronTree;
-    std::map<int, LogNode> lexTree;
+    std::map<int, std::vector<LogNode>> lexTree;
 
     int append(int idsn, json &node, Proofs &prf);
 
-    int trace(int idsn, LogNode &logNode, Proofs &prf);
+    int trace(int idsn, std::vector<LogNode> &logNodeList, std::vector<Proofs> &proofsList);
 };
 
 #endif //LM_LOG_H

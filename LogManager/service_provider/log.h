@@ -69,11 +69,13 @@ public:
 class LogTree {
 public:
     ChronTreeT chronTree;
-    std::map<int, LogNode> lexTree;
+    std::vector<LogNode> nodeList;
+//    map: (idsn, iterator of nodeList)
+    std::map<int, std::vector<int>> lexTree;
 
     int append(int idsn, json &node, Proofs &prf);
 
-    int trace(int idsn, LogNode &logNode, Proofs &prf);
+    int trace(int idsn, std::vector<LogNode> &logNodeList, std::vector<Proofs> &proofsList);
 };
 
 #endif //LM_LOG_H

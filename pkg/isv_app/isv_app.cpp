@@ -56,6 +56,11 @@
 
 // Needed to create enclave and do ecall.
 #include "sgx_urts.h"
+#include "sgx_report.h"
+#include "sgx_dcap_ql_wrapper.h"
+#include "sgx_pce.h"
+#include "sgx_error.h"
+#include "sgx_quote_3.h"
 
 // Needed to query extended epid group id.
 #include "sgx_uae_service.h"
@@ -184,6 +189,158 @@ void PRINT_ATTESTATION_SERVICE_RESPONSE(
                       "Response of type not supported %d\n",
                 response->type);
     }
+}
+
+bool create_app_enclave_report(sgx_enclave_id_t eid, sgx_target_info_t qe_target_info, sgx_report_t *app_report)
+{
+    bool ret = true;
+    uint32_t retval = 0;
+    sgx_status_t sgx_status = SGX_SUCCESS;
+    int launch_token_updated = 0;
+    sgx_launch_token_t launch_token = { 0 };
+
+//    print eid (uint64_t)
+    printf("eid = %lu\n", eid);
+
+    // add parameter: report data
+    sgx_status = enclave_create_report(eid,
+                                       &retval,
+                                       &qe_target_info,
+                                       app_report);
+    if ((SGX_SUCCESS != sgx_status) || (0 != retval)) {
+        printf("\nCall to get_app_enclave_report() failed\n");
+//        print sgx_status in hex
+        printf("sgx_status = 0x%x\n", sgx_status);
+        printf("retval = 0x%x\n", retval);
+//        SGX_ERROR_INVALID_PARAMETER or SGX_ERROR_INVALID_ENCLAVE_ID
+        switch (sgx_status) {
+            case SGX_ERROR_INVALID_PARAMETER:
+                printf("SGX_ERROR_INVALID_PARAMETER\n");
+                break;
+            case SGX_ERROR_INVALID_ENCLAVE_ID:
+                printf("SGX_ERROR_INVALID_ENCLAVE_ID\n");
+                break;
+            default:
+                printf("unknown error\n");
+                break;
+
+        }
+
+        ret = false;
+        goto CLEANUP;
+    }
+
+    CLEANUP:
+    return ret;
+}
+
+int get_quote(sgx_enclave_id_t eid, std::vector<uint8_t> &app_data, sgx_quote3_t * &p_quote, uint32_t &quote_size) {
+    int ret = 0;
+    quote3_error_t qe3_ret = SGX_QL_SUCCESS;
+    quote_size = 0;
+    uint8_t* p_quote_buffer = NULL;
+    sgx_target_info_t qe_target_info;
+    sgx_report_t app_report;
+    sgx_ql_auth_data_t *p_auth_data;
+    sgx_ql_ecdsa_sig_data_t *p_sig_data;
+    sgx_ql_certification_data_t *p_cert_data;
+    FILE *fptr = NULL;
+    bool is_out_of_proc = false;
+
+    printf("\nStep1: Call sgx_qe_get_target_info:");
+    qe3_ret = sgx_qe_get_target_info(&qe_target_info);
+    if (SGX_QL_SUCCESS != qe3_ret) {
+        printf("Error in sgx_qe_get_target_info. 0x%04x\n", qe3_ret);
+        ret = -1;
+        goto CLEANUP;
+    }
+    printf("succeed!");
+
+//   todo: put app_data into create_app_enclave_report()
+
+    printf("\nStep2: Call create_app_report:");
+    if(!create_app_enclave_report(eid, qe_target_info, &app_report)) {
+        printf("\nCall to create_app_report() failed\n");
+        ret = -1;
+        goto CLEANUP;
+    }
+
+    printf("succeed!");
+
+#if _WIN32
+    fopen_s(&fptr, "report.dat", "wb");
+#else
+    fptr = fopen("report.dat","wb");
+#endif
+    if( fptr ) {
+        fwrite(&app_report, sizeof(app_report), 1, fptr);
+        fclose(fptr);
+    }
+
+    printf("\nStep3: Call sgx_qe_get_quote_size:");
+    qe3_ret = sgx_qe_get_quote_size(&quote_size);
+    if (SGX_QL_SUCCESS != qe3_ret) {
+        printf("Error in sgx_qe_get_quote_size. 0x%04x\n", qe3_ret);
+        ret = -1;
+        goto CLEANUP;
+    }
+
+    printf("succeed!");
+    printf("quote_size = %d\n", quote_size);
+    p_quote_buffer = (uint8_t*)malloc(quote_size);
+    if (NULL == p_quote_buffer) {
+        printf("Couldn't allocate quote_buffer\n");
+        ret = -1;
+        goto CLEANUP;
+    }
+    memset(p_quote_buffer, 0, quote_size);
+
+    // Get the Quote
+    printf("\nStep4: Call sgx_qe_get_quote:");
+    qe3_ret = sgx_qe_get_quote(&app_report,
+                               quote_size,
+                               p_quote_buffer);
+    if (SGX_QL_SUCCESS != qe3_ret) {
+        printf( "Error in sgx_qe_get_quote. 0x%04x\n", qe3_ret);
+        ret = -1;
+        goto CLEANUP;
+    }
+    printf("succeed!");
+
+    p_quote = (sgx_quote3_t*)p_quote_buffer;
+    p_sig_data = (sgx_ql_ecdsa_sig_data_t *)p_quote->signature_data;
+    p_auth_data = (sgx_ql_auth_data_t*)p_sig_data->auth_certification_data;
+    p_cert_data = (sgx_ql_certification_data_t *)((uint8_t *)p_auth_data + sizeof(*p_auth_data) + p_auth_data->size);
+
+    printf("cert_key_type = 0x%x\n", p_cert_data->cert_key_type);
+
+#if _WIN32
+    fopen_s(&fptr, "quote.dat", "wb");
+#else
+    fptr = fopen("quote.dat","wb");
+#endif
+    if( fptr )
+    {
+        fwrite(p_quote, quote_size, 1, fptr);
+        fclose(fptr);
+    }
+
+    if( !is_out_of_proc )
+    {
+        printf("sgx_qe_cleanup_by_policy is valid in in-proc mode only.\n");
+        printf("\n Clean up the enclave load policy:");
+        qe3_ret = sgx_qe_cleanup_by_policy();
+        if(SGX_QL_SUCCESS != qe3_ret) {
+            printf("Error in cleanup enclave load policy: 0x%04x\n", qe3_ret);
+            ret = -1;
+            goto CLEANUP;
+        }
+        printf("succeed!\n");
+    }
+
+    CLEANUP:
+    std::cout << "\np_quote is null? " << (p_quote == nullptr) << std::endl;
+    return ret;
 }
 
 int myaesencrypt(const ra_samp_request_header_t *p_msgenc,
@@ -347,7 +504,7 @@ int pkg_keyreq(const uint8_t *p_msg,
     uint8_t p_data[LENOFMSE] = {0};
     uint8_t out_data[LENOFMSE] = {0};
     ra_samp_response_header_t *p_msg2_full = NULL;
-    uint32_t data_size = msg_size - SGX_AESGCM_MAC_SIZE;
+    uint32_t data_size = msg_size - SGX_AESGCM_MAC_SIZE, quote_size = 0;
 
     std::vector<uint8_t> ir_sig, ir;
 
@@ -409,21 +566,43 @@ int pkg_keyreq(const uint8_t *p_msg,
     ecc_encrypt(vec_pkey, vec_ct, "param/client-pk.pem");
     ecdsa_sign(vec_ct, vec_pkey_sig, "param/pkg-sign.pem");
 
+
+    e[2] = steady_clock::now();
+
+//    print size of vec_ct
+    std::cout << "size of vec_ct is " << vec_ct.size() << std::endl;
+
+//    print size of vec_pkey_sig
+    std::cout << "size of vec_pkey_sig is " << vec_pkey_sig.size() << std::endl;
+
+    sgx_quote3_t *p_quote = nullptr;
+
+//    todo: call get_quote, put vec_pkey_sig into quote
+    get_quote(id, vec_pkey_sig, p_quote, quote_size);
+
+    std::cout << "start to send quote" << std::endl;
+    std::cout << "quote_size is " << quote_size << std::endl;
+//    p_quote is null?
+    std::cout << "p_quote is null?" << (p_quote == nullptr) << std::endl;
+    std::vector<uint8_t> vec_quote((uint8_t *) p_quote, (uint8_t *) p_quote + quote_size);
+    std::cout << "size of vec_quote is " << vec_quote.size() << std::endl;
+
     json j_res{
             {"status", 0},
             {"pkey_ct", vec_ct},
-            {"sig",  vec_pkey_sig}
+            {"sig",  vec_pkey_sig},
+            {"quote", vec_quote},
+            {"quote_size", quote_size}
     };
     std::string msg_body = j_res.dump();
-
-    e[2] = steady_clock::now();
+    std::cout << "msg_body is " << msg_body << std::endl;
 
     msg2_size = msg_body.size() + 1;
     p_response = (ra_samp_response_header_t *) malloc(msg2_size + sizeof(ra_samp_response_header_t));
     if (!p_response) {
         DBG(stderr, "\nError, out of memory in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
-        return ret;
+        goto CLEANUP;
     }
 
     // construct response
@@ -443,10 +622,11 @@ int pkg_keyreq(const uint8_t *p_msg,
     memset(server.sendbuf, 0, BUFSIZ);
     memcpy(server.sendbuf, p_response, msg2_size + sizeof(ra_samp_response_header_t));
 
+    std::cout << "send size: " << msg2_size + sizeof(ra_samp_response_header_t) << std::endl;
     if (server.SendTo(msg2_size + sizeof(ra_samp_response_header_t)) < 0) {
         DBG(stderr, "\nError, send encrypted data failed in [%s]-[%d].", __FUNCTION__, __LINE__);
         ret = SP_INTERNAL_ERROR;
-        return ret;
+        goto CLEANUP;
     }
 
     DBG(stdout, "\nKeyreq Done.");
@@ -462,6 +642,13 @@ int pkg_keyreq(const uint8_t *p_msg,
         }
     }
 
+    CLEANUP:
+    printf("\n get_quote clean up:");
+    if (NULL != p_quote) {
+        free(p_quote);
+    }
+
+    printf("succeed!\n");
     return ret;
 }
 
@@ -835,6 +1022,8 @@ int main(int argc, char *argv[]) {
                                 p_req->type, __FUNCTION__);
                         goto CLEANUP;
                 }
+
+                DBG(stderr, "\n");
             }
         } while (is_recv);
 

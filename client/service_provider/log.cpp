@@ -55,6 +55,36 @@ bool compare_timestamps(const std::string &timestamp1, const std::string &timest
     return parse_timestamp(timestamp1) < parse_timestamp(timestamp2);
 }
 
+std::string vectorToHex(const std::vector<uint8_t>& data) {
+    std::stringstream ss;
+    for (const auto& byte : data) {
+        ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(byte);
+    }
+    return ss.str();
+}
+
+std::vector<uint8_t> hexToVector(const std::string& hexString) {
+    std::vector<uint8_t> result;
+    std::istringstream iss(hexString);
+    std::string byteString;
+
+    for (size_t i = 0; i < hexString.length(); i += 2) {
+        byteString = hexString.substr(i, 2);
+        uint8_t byte = static_cast<uint8_t>(std::stoul(byteString, nullptr, 16));
+        result.push_back(byte);
+    }
+    return result;
+}
+
+std::string wrapText(const std::string &input, size_t lineLength) {
+    std::ostringstream oss;
+    for (size_t i = 0; i < input.length(); i += lineLength) {
+        if (i != 0) oss << '\n';
+        oss << input.substr(i, lineLength);
+    }
+    return oss.str();
+}
+
 int Proofs::serialise(uint8_t *bytes) {
     log_header_t header;
     int size = 0;
@@ -147,19 +177,28 @@ int LogTree::append(int idsn, json &j_node, Proofs &prf) {
 
     node.index = chronTree.max_index();
 
-    lexTree[idsn] = node;
+
+    if (lexTree.find(idsn) == lexTree.end()) {
+        lexTree[idsn] = std::vector<LogNode>();
+    }
+    lexTree[idsn].push_back(node);
     return ret;
 }
 
-int LogTree::trace(int idsn, LogNode &logNode, Proofs &prf) {
+int LogTree::trace(int idsn, std::vector<LogNode> &logNodeList, std::vector<Proofs> &proofsList) {
     if (lexTree.find(idsn) == lexTree.end()) {
         return 0;
     }
 
-    logNode = lexTree[idsn];
+    logNodeList = lexTree[idsn];
 
-    prf.node = logNode.hash;
-    prf.root = chronTree.root();
-    prf.path = chronTree.path(logNode.index);
+    for (const auto& logNode: logNodeList) {
+        Proofs prf;
+        prf.node = logNode.hash;
+        prf.root = chronTree.root();
+        prf.path = chronTree.path(logNode.index);
+        proofsList.push_back(prf);
+    }
     return 1;
 }
+

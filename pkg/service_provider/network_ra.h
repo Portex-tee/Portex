@@ -40,6 +40,8 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
+#define BUFSIZ 65536
+
 /* Enum for all possible message types between the ISV app and
  * the ISV SP. Requests and responses in the remote attestation
  * sample.

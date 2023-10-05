@@ -147,7 +147,7 @@ int NetworkClient::client(const char *ip, int port) {
 }
 
 int NetworkEnd::SendTo(int len) {
-    len = send(client_sockfd, sendbuf, len, 0);//发送
+    return len = send(client_sockfd, sendbuf, len, 0);//发送
 }
 
 int NetworkEnd::RecvFrom() {
