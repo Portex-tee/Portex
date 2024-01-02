@@ -1,7 +1,7 @@
 // function decrypt(): the POST request body contains a text in a input area with id "dec-ciphertext", and the response is a string that shows in the readonly textarea with id "dec-plaintext"
 function decrypt() {
     var ciphertext = document.getElementById("dec-ciphertext").value;
-    var url = "http://121.41.111.120:8080/decrypt";
+    var url = "http://ac-dec.com:8080/decrypt";
     var xhr = new XMLHttpRequest();
     var plaintext = document.getElementById("dec-plaintext");
     var quote_out = document.getElementById("quote-out");

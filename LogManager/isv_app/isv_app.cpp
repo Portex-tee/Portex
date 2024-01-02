@@ -355,7 +355,7 @@ static void signalHandler(int signum) {
 
 void http_server() {
     std::cout << "Load http server" << std::endl;
-    drogon::app().loadConfigFile("./config.json");
+    app().loadConfigFile("./config.json");
 
     app().registerHandler("/service", [&](const HttpRequestPtr &req,
                                           std::function<void(const HttpResponsePtr &)> &&callback) {
