@@ -12,42 +12,40 @@
 #define ECC_ALGORITHM ECP
 #define ECC_CURVE ASN1::brainpoolP160r1()
 
-using namespace CryptoPP;
-
 void ecdsa_kgen(std::string pk_path, std::string sk_path) {
 
-    AutoSeededRandomPool prng;
-    ECDSA<ECC_ALGORITHM, CryptoPP::SHA256>::PrivateKey sk;
-    sk.Initialize(prng, ECC_CURVE);
-    ECDSA<ECC_ALGORITHM, CryptoPP::SHA256>::PublicKey pk;
+    CryptoPP::AutoSeededRandomPool prng;
+    CryptoPP::ECDSA<CryptoPP::ECC_ALGORITHM, CryptoPP::SHA256>::PrivateKey sk;
+    sk.Initialize(prng, CryptoPP::ECC_CURVE);
+    CryptoPP::ECDSA<CryptoPP::ECC_ALGORITHM, CryptoPP::SHA256>::PublicKey pk;
     sk.MakePublicKey(pk);
 
-    FileSink fs_pri(sk_path.c_str(), true);
+    CryptoPP::FileSink fs_pri(sk_path.c_str(), true);
     PEM_Save(fs_pri, sk);
-    FileSink fs_pub(pk_path.c_str(), true);
+    CryptoPP::FileSink fs_pub(pk_path.c_str(), true);
     PEM_Save(fs_pub, pk);
 }
 
 void ecc_kgen(std::string pk_path, std::string sk_path) {
-    AutoSeededRandomPool prng;
+    CryptoPP::AutoSeededRandomPool prng;
 
-    ECIES<ECC_ALGORITHM, CryptoPP::SHA256>::PrivateKey privateKey;
-    ECIES<ECC_ALGORITHM, CryptoPP::SHA256>::PublicKey publicKey;
-    privateKey.Initialize(prng, ECC_CURVE);
+    CryptoPP::ECIES<CryptoPP::ECC_ALGORITHM, CryptoPP::SHA256>::PrivateKey privateKey;
+    CryptoPP::ECIES<CryptoPP::ECC_ALGORITHM, CryptoPP::SHA256>::PublicKey publicKey;
+    privateKey.Initialize(prng, CryptoPP::ECC_CURVE);
     privateKey.MakePublicKey(publicKey);
 
-    FileSink fs_pri(sk_path.c_str(), true);
+    CryptoPP::FileSink fs_pri(sk_path.c_str(), true);
     PEM_Save(fs_pri, privateKey);
-    FileSink fs_pub(pk_path.c_str(), true);
+    CryptoPP::FileSink fs_pub(pk_path.c_str(), true);
     PEM_Save(fs_pub, publicKey);
 }
 
 void ecdsa_sign(std::vector<uint8_t> &msg, std::vector<uint8_t> &sig, std::string sk_path) {
-    AutoSeededRandomPool prng;
-    ECDSA<ECC_ALGORITHM, CryptoPP::SHA256>::PrivateKey sk;
-    FileSource fs_pri(sk_path.c_str(), true);
+    CryptoPP::AutoSeededRandomPool prng;
+    CryptoPP::ECDSA<CryptoPP::ECC_ALGORITHM, CryptoPP::SHA256>::PrivateKey sk;
+    CryptoPP::FileSource fs_pri(sk_path.c_str(), true);
     PEM_Load(fs_pri, sk);
-    ECDSA<ECC_ALGORITHM, CryptoPP::SHA256>::Signer signer(sk);
+    CryptoPP::ECDSA<CryptoPP::ECC_ALGORITHM, CryptoPP::SHA256>::Signer signer(sk);
 
     int siglen;
     sig.resize(signer.SignatureLength());
@@ -56,13 +54,13 @@ void ecdsa_sign(std::vector<uint8_t> &msg, std::vector<uint8_t> &sig, std::strin
 }
 
 void ecc_encrypt(std::vector<uint8_t> &msg, std::vector<uint8_t> &ct, std::string pk_path) {
-    AutoSeededRandomPool prng;
-    ECIES<ECC_ALGORITHM, CryptoPP::SHA256>::PublicKey pk;
+    CryptoPP::AutoSeededRandomPool prng;
+    CryptoPP::ECIES<CryptoPP::ECC_ALGORITHM, CryptoPP::SHA256>::PublicKey pk;
 
-    FileSource fs_pri(pk_path.c_str(), true);
+    CryptoPP::FileSource fs_pri(pk_path.c_str(), true);
     PEM_Load(fs_pri, pk);
 
-    ECIES<ECC_ALGORITHM, CryptoPP::SHA256>::Encryptor encryptor(pk);
+    CryptoPP::ECIES<CryptoPP::ECC_ALGORITHM, CryptoPP::SHA256>::Encryptor encryptor(pk);
 
     ct.resize(1024);
     encryptor.Encrypt(prng, msg.data(), msg.size(), ct.data());
@@ -71,10 +69,10 @@ void ecc_encrypt(std::vector<uint8_t> &msg, std::vector<uint8_t> &ct, std::strin
 }
 
 bool ecdsa_verify(std::vector<uint8_t> &msg, std::vector<uint8_t> &sig, std::string vk_path) {
-    ECDSA<ECC_ALGORITHM, CryptoPP::SHA256>::PublicKey vk;
-    FileSource fs_pub(vk_path.c_str(), true);
+    CryptoPP::ECDSA<CryptoPP::ECC_ALGORITHM, CryptoPP::SHA256>::PublicKey vk;
+    CryptoPP::FileSource fs_pub(vk_path.c_str(), true);
     PEM_Load(fs_pub, vk);
-    ECDSA<ECC_ALGORITHM, CryptoPP::SHA256>::Verifier verifier(vk);
+    CryptoPP::ECDSA<CryptoPP::ECC_ALGORITHM, CryptoPP::SHA256>::Verifier verifier(vk);
 
     bool result = verifier.VerifyMessage(msg.data(), msg.size(), sig.data(), sig.size());
 
@@ -82,11 +80,11 @@ bool ecdsa_verify(std::vector<uint8_t> &msg, std::vector<uint8_t> &sig, std::str
 }
 
 void ecc_decrypt(std::vector<uint8_t> &msg, std::vector<uint8_t> &ct, std::string sk_path) {
-    AutoSeededRandomPool prng;
-    ECIES<ECC_ALGORITHM, CryptoPP::SHA256>::PrivateKey sk;
-    FileSource fs_pri(sk_path.c_str(), true);
+    CryptoPP::AutoSeededRandomPool prng;
+    CryptoPP::ECIES<CryptoPP::ECC_ALGORITHM, CryptoPP::SHA256>::PrivateKey sk;
+    CryptoPP::FileSource fs_pri(sk_path.c_str(), true);
     PEM_Load(fs_pri, sk);
-    ECIES<ECC_ALGORITHM, CryptoPP::SHA256>::Decryptor decryptor(sk);
+    CryptoPP::ECIES<CryptoPP::ECC_ALGORITHM, CryptoPP::SHA256>::Decryptor decryptor(sk);
 
     int msg_len = decryptor.MaxPlaintextLength(ct.size());
     msg.resize(msg_len);

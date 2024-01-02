@@ -77,6 +77,8 @@ ifeq ($(SUPPLIED_KEY_DERIVATION), 1)
 endif
 ######## App Settings ########
 
+DCAP_Library_Name := sgx_dcap_ql
+
 ifneq ($(SGX_MODE), HW)
 	Urts_Library_Name := sgx_urts_sim
 else
@@ -103,7 +105,7 @@ endif
 App_Cpp_Flags := $(App_C_Flags) -std=c++11
 App_Link_Flags := $(SGX_COMMON_CFLAGS) \
 	-L$(IPP_LIBRARY_PATH) \
-	-L$(SGX_LIBRARY_PATH) -l$(Urts_Library_Name) \
+	-L$(SGX_LIBRARY_PATH) -l$(Urts_Library_Name) -l$(DCAP_Library_Name)\
 	-L. -lpbc -lgmp -lsgx_ukey_exchange -lpthread -lservice_provider -lssl -lcrypto -lcryptopp\
 	-Wl,-rpath=$(CURDIR)/sample_libcrypto \
 	-Wl,-rpath=$(CURDIR)

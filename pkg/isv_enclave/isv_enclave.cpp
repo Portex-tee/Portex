@@ -35,6 +35,23 @@
 #include "sgx_tkey_exchange.h"
 #include "sgx_tcrypto.h"
 #include "string.h"
+
+#include "sgx_trts.h"
+#include "sgx_error.h"
+#include "sgx_report.h"
+#include "sgx_utils.h"
+
+
+uint32_t enclave_create_report(const sgx_target_info_t* p_qe3_target,
+                               sgx_report_t* p_report)
+{
+    sgx_report_data_t report_data = { 0 };
+
+    // Generate the report for the app_enclave
+    sgx_status_t  sgx_error = sgx_create_report(p_qe3_target, &report_data, p_report);
+
+    return sgx_error;
+}
 // This is the public EC key of the SP. The corresponding private EC key is
 // used by the SP to sign data used in the remote attestation SIGMA protocol
 // to sign channel binding data in MSG2. A successful verification of the

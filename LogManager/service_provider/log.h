@@ -11,6 +11,7 @@
 #include <map>
 #include <vector>
 #include <chrono>
+#include <iomanip>
 #include <sys/time.h>
 #include "json.hpp"
 
@@ -26,7 +27,22 @@ typedef struct _log_header_t {
 
 void sha256(const std::string &srcStr, std::string &encodedHexStr);
 
-std::string get_timestamp(timeval &tv);
+std::string get_timestamp();
+
+
+std::string get_future_timestamp(int seconds);
+
+
+std::chrono::system_clock::time_point parse_timestamp(const std::string& timestamp);
+
+bool compare_timestamps(const std::string& timestamp1, const std::string& timestamp2);
+
+std::string vectorToHex(const std::vector<uint8_t>& data);
+
+std::vector<uint8_t> hexToVector(const std::string& hexString);
+
+
+std::string wrapText(const std::string &input, size_t lineLength = 16);
 
 class Proofs {
 public:
@@ -41,31 +57,25 @@ public:
     int deserialise(uint8_t *bytes);
 };
 
+class LogNode {
+public:
+    json node;
+    size_t index;
+    ChronTreeT::Hash hash;
+
+    LogNode() = default;
+};
+
 class LogTree {
 public:
     ChronTreeT chronTree;
-    std::map<int, std::vector<std::string>> lexTree;
+    std::vector<LogNode> nodeList;
+//    map: (idsn, iterator of nodeList)
+    std::map<int, std::vector<int>> lexTree;
 
-    int append(int id, const std::string &node, ChronTreeT::Hash hash, Proofs &prf);
+    int append(int idsn, json &node, Proofs &prf);
 
-    void trace(int ID, std::vector<json> &lst);
-
-//    int merkle_test() {
-//        std::string srcStr = "message", encodedHexStr;
-//
-//        sha256(srcStr, encodedHexStr);
-//
-//        ChronTreeT::Hash hash(encodedHexStr);
-//        std::vector<ChronTreeT::Hash> hashes;
-//        hashes.push_back(hash);
-//        for (auto h : hashes)
-//            chronTree.insert(h);
-//        auto root = chronTree.root();
-//        auto path = chronTree.path(hashes.size() - 1);
-//        assert(path->verify(root));
-//        std::cout << "verify succeed" << std::endl;
-//        return 0;
-//    }
+    int trace(int idsn, std::vector<LogNode> &logNodeList, std::vector<Proofs> &proofsList);
 };
 
 #endif //LM_LOG_H

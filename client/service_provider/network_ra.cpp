@@ -140,6 +140,7 @@ int NetworkClient::client(const char *ip, int port) {
     /*将套接字绑定到服务器的网络地址上*/
     if (connect(client_sockfd, (struct sockaddr *) &remote_addr, sizeof(remote_addr)) < 0) {
         perror("connect");
+//        wait 1 second
         return 1;
     }
     printf("connected to server\n");
@@ -153,9 +154,15 @@ int NetworkEnd::SendTo(int len) {
 int NetworkEnd::RecvFrom() {
     /*接收服务端的数据*/
     int len = 0;
-    len = recv(client_sockfd, recvbuf, BUFSIZ, 0);
-    if (len > 0)
-        recvbuf[len] = 0;
+//    receive all data
+    while (len < BUFSIZ) {
+        int ret = recv(client_sockfd, recvbuf + len, BUFSIZ - len, 0);
+        if (ret <= 0) {
+            break;
+        }
+        len += ret;
+    }
+
     return len;
 }
 

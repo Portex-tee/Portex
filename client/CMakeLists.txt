@@ -22,7 +22,6 @@ message(STATUS "C++ standard: ${CMAKE_CXX_STANDARD}")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-
 find_package(Drogon CONFIG REQUIRED)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
@@ -40,6 +39,7 @@ file(GLOB LIB_SAMP sample_libcrypto/libsample_libcrypto.so)
 set(SRCS isv_app/isv_app.cpp)
 add_executable(${PROJECT_NAME} ${SRCS} )
 
+target_link_libraries(${PROJECT_NAME} Drogon::Drogon)
 target_link_libraries(${PROJECT_NAME} ${PROJ_LIBS} ${LIB_SAMP})
 
 # ##############################################################################
@@ -49,7 +49,6 @@ target_link_libraries(${PROJECT_NAME} ${PROJ_LIBS} ${LIB_SAMP})
 # target_link_libraries(${PROJECT_NAME} PRIVATE drogon)
 #
 # and comment out the following lines
-target_link_libraries(${PROJECT_NAME} Drogon::Drogon)
 
 # ##############################################################################
 

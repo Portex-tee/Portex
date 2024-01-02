@@ -6,8 +6,9 @@
 #define PBC_TEST_AIBE_H
 
 #include <pbc/pbc.h>
-#include <pbc/pbc_test.h>
 #include <cmath>
+#include <cstring>
+#include <string>
 
 #define N_ID (8)
 #define N_SN (12)

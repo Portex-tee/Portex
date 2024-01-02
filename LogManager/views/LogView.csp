@@ -1,20 +1,17 @@
 <!DOCTYPE html>
-<html lang="en">
 <%inc
 #include "drogon/HttpAppFramework.h"
+#include "log.h"
 %>
-<!--[if lt IE 7]>      <html class="no-js lt-ie9 lt-ie8 lt-ie7"> <![endif]-->
-<!--[if IE 7]>         <html class="no-js lt-ie9 lt-ie8"> <![endif]-->
-<!--[if IE 8]>         <html class="no-js lt-ie9"> <![endif]-->
-<!--[if gt IE 8]><!--> <html class="no-js"> <!--<![endif]-->
+<html class="no-js">
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title>Portex </title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Free HTML5 Template by FREEHTML5.CO" />
-    <meta name="keywords" content="free html5, free template, free bootstrap, html5, css3, mobile first, responsive" />
-    <meta name="author" content="FREEHTML5.CO" />
+    <meta name="description" content="Free HTML5 Template by FREEHTML5.CO"/>
+    <meta name="keywords" content="free html5, free template, free bootstrap, html5, css3, mobile first, responsive"/>
+    <meta name="author" content="FREEHTML5.CO"/>
 
     <!-- Facebook and Twitter integration -->
     <meta property="og:title" content=""/>
@@ -22,10 +19,10 @@
     <meta property="og:url" content=""/>
     <meta property="og:site_name" content=""/>
     <meta property="og:description" content=""/>
-    <meta name="twitter:title" content="" />
-    <meta name="twitter:image" content="" />
-    <meta name="twitter:url" content="" />
-    <meta name="twitter:card" content="" />
+    <meta name="twitter:title" content=""/>
+    <meta name="twitter:image" content=""/>
+    <meta name="twitter:url" content=""/>
+    <meta name="twitter:card" content=""/>
 
     <!-- Place favicon.ico and apple-touch-icon.png in the root directory -->
     <link rel="shortcut icon" href="work/favicon.ico">
@@ -54,7 +51,6 @@
     <script src="work/js/modernizr-2.6.2.min.js"></script>
     <script src="work/js/respond.min.js"></script>
     <![endif]-->
-
 </head>
 <body>
 
@@ -81,47 +77,146 @@
                         <a href="index.html">Home</a>
                     </li>
                     <li>
-                        <a href="work.html">How AD works</a>
+                        <a href="work.html">How A-Dec works</a>
                     </li>
                     <li>
-                        <a href="product.html">Product</a>
+                        <a href="download.html">Download</a>
                     </li>
                     <li class="fh5co-active">
+                        <!--                        <a href="service.html">Service</a>-->
                         <a href="service">Service</a>
                     </li>
-                    <li>
-                        <a href="http://121.41.111.120:8080/">Client Demo</a>
-                    </li>
                 </ul>
-                <a href="#" class="fh5co-nav-call-to-action js-fh5co-nav-call-to-action">Github</a>
+                <a href="https://github.com/Portex-tee/Portex" class="fh5co-nav-call-to-action js-fh5co-nav-call-to-action">Github</a>
             </nav>
         </div>
         <!-- Main Nav -->
-
     </div>
 </header>
 <!-- Header -->
 
+
 <main role="main">
     <!-- Start Intro -->
-    <div id="fh5co-intro">
-        <div class="container">
-            <div class="row align-items-center">
 
-                <div class="col-md">
-                    <main class="table">
-                        <section class="shell">
-                            <table>
-                                <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>SN</th>
-                                    <th>Time</th>
-                                    <th>Signature</th>
-                                    <th>Proof</th>
-                                </tr>
-                                </thead>
-                                <tbody>
+    <div id="fh5co-intro">
+
+	 <div class="container">
+		<div class="row">
+
+		<div class="col-md-12 fh5co-intro-sub">
+		This is a demo service running based on a server with 3.5GHz Intel Xeon CPU (Ice Lake).</br>
+	    Decryption policy as follows: decryption is only allowed after a certain period of time; otherwise, it will be considered illegal decryption.
+		  </div>
+
+
+
+				<div class="col-md-6 fh5co-intro-sub">
+
+                    <h3>Encryption</h3>
+
+                    <form action="#" method="post">
+                        <fieldset>
+                            <div class="form-group">
+							 <p><small> Enter your unique ID (must be <span style="color: green">number</span> ), followed by the plaintext you wish to encrypt.</small> </p>
+                                ID: <input class="form-control input" name="id" type="number" id="id" placeholder="Your ID *" required>
+                                Plaintext:
+                                <label for="message" class="sr-only">Message</label>
+                                <textarea name="message" placeholder="Message" id="message" class="form-control input-lg" rows="3" required></textarea>
+                                </br>
+								<p><small>Decide on the duration after which the ciphertext can be decrypted.</small></p>
+								Duration:
+                                <div style="display: flex; justify-content: space-between;">
+                                    <input class="form-control input" name="duration" type="number" id="duration" placeholder="Duration *" required style="width: 45%;">
+                                    <select class="form-control input" name="unit" id="unit" required style="width: 45%;">
+                                        <option value="seconds">Seconds</option>
+                                        <option value="minutes">Minutes</option>
+                                        <option value="hours">Hours</option>
+                                        <option value="days">Days</option>
+                                    </select>
+                                </div>
+								</br>
+								<p><small>The ciphertext and quote can be shared and stored.</small></p>
+                                Ciphertext:
+                                <label for="ciphertext" class="sr-only">Ciphertext</label>
+                                <textarea name="ciphertext" placeholder="Ciphertext" id="ciphertext" class="form-control input-lg default-cursor" rows="3" required readonly></textarea>
+                                </br>
+                            </div>
+                        </fieldset>
+                        <fieldset>
+                            <div class="form-group">
+                                <input onclick="encrypt()" class="btn btn-primary btn-md" value="Encrypt" readonly>
+                                <input type="reset" class="btn btn-outline btn-md" value="Reset">
+                            </div>
+                        </fieldset>
+                    </form>
+
+				</div>
+
+				<div class="col-md-6 fh5co-intro-sub row align-items-center">
+
+				<h3>Decryption</h3>
+                <p></p>
+                <form action="#" method="post">
+
+                    <fieldset>
+                        <div class="form-group">
+						   <p><small>To decipher the ciphertext, paste it into the following fields.
+						   The original plaintext will be revealed if the current time exceeds the protocol time defined in ciphertext.
+						   If attempted before this time, decryption will be rejected, but the operation will still be logged. </small> </p>
+
+							 </br>
+                            Ciphertext:
+                            <label for="ciphertext" class="sr-only">Ciphertext</label>
+                            <textarea name="dec-ciphertext" placeholder="Ciphertext" id="dec-ciphertext"
+                                      class="form-control input-lg" rows="3" required=""></textarea>
+
+							</br>
+                            TEE quote:
+                            <label for="ciphertext" class="sr-only">Ciphertext</label>
+                            <textarea name="quote-out" placeholder="TEE Quote" id="quote-out" class="form-control input-lg default-cursor" rows="2" required readonly></textarea>
+                            </br>
+                            Message:
+                            <label for="message" class="sr-only">Message</label>
+                            <textarea name="dec-plaintext" placeholder="Message" id="dec-plaintext"
+                                      class="form-control input-lg" rows="3" required="" readonly></textarea>
+                            </br>
+                        </div>
+                    </fieldset>
+
+
+                    <fieldset>
+                        <div class="form-group">
+                            <input onclick="decrypt()" class="btn btn-primary btn-md" value="Decrypt" readonly>
+                            <input type="reset" class="btn btn-outline btn-md" value="Reset">
+                        </div>
+                    </fieldset>
+
+                </form>
+
+				</div>
+
+				<div class="col-md-12 fh5co-intro-sub row align-items-center">
+
+				<h3>Accountability of Decryption</h3>
+                    <p><small> Every decryption event is meticulously logged. This includes key information such as ID, SN, protocol time (the specified decryption time within the ciphertext), decrypt time (the actual time the decryption request was received), validity, along with the signature and proof. Here, when decrypt time exceeds protocol time, the decryption is <span style="color: green">Valid</span>, otherwise it is <span style="color: red">Invalid</span>.</small> </p>
+
+						<div class="col-md">
+							<main class="table">
+								<section class="shell">
+                                    <table id="LogTable">
+										<thead>
+										<tr>
+											<th>ID</th>
+											<th>SN</th>
+											<th>Protocol Time</th>
+											<th>Decrypt Time</th>
+											<th>Validity</th>
+											<th>Signature</th>
+<!--											<th>Proof</th>-->
+										</tr>
+										</thead>
+										<tbody>
                                 <%c++
                                 auto logList = @@.get<Json::Value>("list");
                                     if (logList["size"].asInt() > 0) {
@@ -129,37 +224,52 @@
                                     <tr>
                                         <td>{%it["id"]%}</td>
                                         <td>{%it["sn"]%}</td>
+                                        <td>{%it["protocol"]%}</td>
                                         <td>{%it["ts"]%}</td>
+                                        <%c++ if (it["valid"].asBool()) { %>
+                                        <td><p style="color: green">Valid</p></td>
+                                        <%c++ } else { %>
+                                        <td><p style="color: red">Invalid</p></td>
+                                        <%c++ } %>
                                         <td>{%it["sig"]%}</td>
-                                        <td>
-                                            <p class="button btn btn-primary btn-block"> download </p>
-                                        </td>
+<!--                                        <td>-->
+<!--                                            <p class="button btn btn-primary btn-block"> download </p>-->
+<!--                                        </td>-->
                                     </tr>
                                     <%c++ }} %>
-                            </table>
-                        </section>
-                    </main>
-                </div>
-            </div>
-        </div>
+									</table>
+								</section>
+							</main>
+						</div>
+				</div>
+
+				 <div class="col-md-12 fh5co-intro-sub">
+				   <p><small>We aim to guarantee data security and accountability in decryption operations.
+								With a focus on transparency and a clear audit trail, our system offers a powerful solution for
+								secure decryption
+								while alerting against any suspicious decryption activities. </small> </p>
+				   </div>
+
+		</div>
+    </div>
+
+
     </div>
     <!-- End Intro -->
 
     <div class="fh5co-spacer fh5co-spacer-md"></div>
-
 </main>
-
 
 <footer id="fh5co-footer" role="contentinfo">
     <div class="container">
         <div class="row">
             <div class="col-md-12">
                 <p class="fh5co-copyright">
-                    <small>(c) 2023 <a href="index.html">Work</a>. All Rights Reserved. Funded by the following organizations: <a href="https://www.tsinghua.edu.cn/en/">Tsinghua University</a>,
-                        <a href="http://www.sustech.edu.cn/en/">Southern University of Science and Technology</a>,
-                        <a href="https://www.birmingham.ac.uk/index.aspx">University of Birmingham</a>,
+                    <small>(c) 2023 <a href="index.html">A-Dec</a>. All Rights Reserved. Funded by the following
+                        organizations: <a href="https://www.tsinghua.edu.cn/en/">Tsinghua</a>,
+                        <a href="http://www.sustech.edu.cn/en/">SUSTech</a>,
+                        <a href="https://www.birmingham.ac.uk/index.aspx">UoB</a>,
                         <a href="https://www.csiro.au/en/research/technology-space">CSIRO Data61</a>.
-                        <!--Designed by: <a href="http://freehtml5.co/">freehtml5.co</a> -->
                     </small>
                 </p>
             </div>
@@ -169,7 +279,8 @@
 
 <!-- Go To Top -->
 <a href="#" class="fh5co-gotop"><i class="ti-shift-left"></i></a>
-
+<!--Portex-->
+<script src="work/js/portex.js"></script>
 
 <!-- jQuery -->
 <script src="work/js/jquery-1.10.2.min.js"></script>
@@ -187,11 +298,6 @@
 <script src="work/js/fastclick.js"></script>
 <!-- Velocity -->
 <script src="work/js/velocity.min.js"></script>
-
-<!-- Google Map -->
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCefOgb1ZWqYtj7raVSmN4PL2WkTrc-KyA&sensor=false"></script>
-<script src="work/js/google_map.js"></script>
-
 
 <!-- Main JS -->
 <script src="work/js/main.js"></script>
