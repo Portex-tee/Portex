@@ -96,7 +96,9 @@ bool lock = false;
 int loop = 10;
 int pkg_port = 12333;
 int lm_port = 22333;
+
 std::string lm_ip = "47.121.124.25";
+
 const std::string out_dir = "/root/experiments/PortexData/testing-data/";
 //std::string lambda_file = out_dir + "lambda/lambda_" + std::to_string(qbits) + "_client.csv";
 //std::string sn_file = out_dir + "N_SN/SN_" + std::to_string(N_SN) + "_client.csv";
