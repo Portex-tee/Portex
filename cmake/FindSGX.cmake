@@ -71,7 +71,7 @@ else()
 endif()
 
 if(SGX_FOUND)
-    set(SGX_HW ON CACHE BOOL "Run SGX on hardware, OFF for simulation.")
+    set(SGX_HW OFF CACHE BOOL "Run SGX on hardware, OFF for simulation.")
     set(SGX_MODE PreRelease CACHE STRING "SGX build mode: Debug; PreRelease; Release.")
 
     if(SGX_HW)
