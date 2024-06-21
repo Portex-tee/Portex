@@ -1,7 +1,7 @@
 // function decrypt(): the POST request body contains a text in a input area with id "dec-ciphertext", and the response is a string that shows in the readonly textarea with id "dec-plaintext"
 function decrypt() {
     var ciphertext = document.getElementById("dec-ciphertext").value;
-    var url = "http://ac-dec.com:8080/decrypt";
+    var url = "http://47.121.124.25:8080/decrypt";
     var xhr = new XMLHttpRequest();
     var plaintext = document.getElementById("dec-plaintext");
     var quote_out = document.getElementById("quote-out");
@@ -46,7 +46,7 @@ function encrypt() {
     }
 
     $.ajax({
-        url: 'http://121.41.111.120:8080/encrypt',
+        url: 'http://47.121.124.25:8080/encrypt',
         data: {id: id, message: message, seconds: seconds},
         type: 'GET',
         success: function (response) {
@@ -59,7 +59,7 @@ function encrypt() {
 }
 
 function fetchData() {
-    fetch('http://121.41.111.120/service')
+    fetch('http://47.121.124.25/service')
         .then(response => response.json())
         .then(data => {
             let tbody = document.getElementById('LogTable').getElementsByTagName('tbody')[0];

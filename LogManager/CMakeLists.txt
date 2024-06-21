@@ -9,13 +9,14 @@ check_include_file_cxx(coroutine HAS_COROUTINE)
 
 set(CMAKE_CXX_STANDARD 14)
 
-
+set(SGX_HW OFF)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/../cmake)
 find_package(SGX REQUIRED)
 find_package(Drogon CONFIG REQUIRED)
+
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 
