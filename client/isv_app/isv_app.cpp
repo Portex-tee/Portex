@@ -97,7 +97,7 @@ int loop = 10;
 int pkg_port = 12333;
 int lm_port = 22333;
 
-std::string lm_ip = "47.121.124.25";
+std::string lm_ip = "ac-dec.com";
 
 const std::string out_dir = "/root/experiments/PortexData/testing-data/";
 //std::string lambda_file = out_dir + "lambda/lambda_" + std::to_string(qbits) + "_client.csv";
